@@ -1,6 +1,6 @@
 import interviewModel from "../models/interviewModel.js";
 import reportModel from "../models/reportModel.js";
-import billingModel from "../models/BillingModel.js";
+import billingModel from "../models/billingModel.js";
 
 const getCandidateDashboard = async (req, res) => {
   try {
