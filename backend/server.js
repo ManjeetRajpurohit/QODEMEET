@@ -15,7 +15,7 @@ import questionRouter from "./Routes/questionRoute.js";
 import interviewRouter from "./Routes/interviewRoute.js";
 import reportRouter from "./Routes/reportRoute.js";
 import billingRouter from "./Routes/billingRoute.js";
-import codeRouter from "./Routes/codeRoute.js";
+import codeRouter from "./Routes/CodeRoute.js";
 import dashboardRouter from "./Routes/dashBoardRoute.js";
 const port = process.env.PORT || 4000;
 
