@@ -1,4 +1,4 @@
-import billingModel from "../models/BillingModel.js";
+import billingModel from "../models/billingModel.js";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import sendSubscriptionMail from "../utils/sendSubscriptionMail.js";
