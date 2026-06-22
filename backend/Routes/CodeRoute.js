@@ -1,5 +1,5 @@
 import express from "express";
-import { runCode } from "../controllers/codeController.js";
+import { runCode } from "../controllers/CodeController.js";
 
 const codeRouter = express.Router();
 
