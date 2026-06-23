@@ -33,7 +33,7 @@ googleRouter.get(
       );
 
       res.redirect(
-  `${process.env.FRONTEND_URL}/?token=${token}`
+  `${process.env.FRONTEND_URL}/auth-success?token=${token}`
 );
     } catch (error) {
       console.error("Google Login Error:", error);
