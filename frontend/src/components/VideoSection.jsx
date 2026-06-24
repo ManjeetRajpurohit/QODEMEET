@@ -1,8 +1,5 @@
 import React, { useEffect } from "react";
-import {
-Video,
-Monitor,
-} from "lucide-react";
+import { Video, Monitor } from "lucide-react";
 
 const VideoSection = ({
 localVideoRef,
@@ -14,16 +11,12 @@ const attachVideos = async () => {
 try {
 if (localVideoRef?.current) {
 localVideoRef.current.muted = true;
-await localVideoRef.current
-.play()
-.catch(() => {});
+await localVideoRef.current.play().catch(() => {});
 }
 
 ```
     if (remoteVideoRef?.current) {
-      await remoteVideoRef.current
-        .play()
-        .catch(() => {});
+      await remoteVideoRef.current.play().catch(() => {});
     }
   } catch (error) {
     console.error(
@@ -38,8 +31,9 @@ const timer = setTimeout(
   100
 );
 
-return () =>
+return () => {
   clearTimeout(timer);
+};
 ```
 
 }, [
@@ -48,8 +42,7 @@ remoteVideoRef,
 isScreenSharing,
 ]);
 
-return ( <div className="h-full flex flex-col gap-3 p-3 bg-[#020617]">
-{/* Remote Participant */} <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220] relative"> <video
+return ( <div className="h-full flex flex-col gap-3 p-3 bg-[#020617]"> <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220] relative"> <video
        ref={remoteVideoRef}
        autoPlay
        playsInline
@@ -67,7 +60,6 @@ return ( <div className="h-full flex flex-col gap-3 p-3 bg-[#020617]">
     </div>
   </div>
 
-  {/* Local Participant */}
   <div className="h-44 rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220] relative flex-shrink-0">
     <video
       ref={localVideoRef}
