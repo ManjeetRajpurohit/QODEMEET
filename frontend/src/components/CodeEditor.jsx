@@ -1,7 +1,4 @@
-import React, {
-useContext,
-useRef,
-} from "react";
+import React, { useContext, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { Play } from "lucide-react";
 import axios from "axios";
@@ -19,19 +16,13 @@ setOutput,
 }) => {
 const editorRef = useRef(null);
 
-const { backendUrl } =
-useContext(AppContext);
+const { backendUrl } = useContext(AppContext);
 
-const handleEditorDidMount = (
-editor
-) => {
+const handleEditorDidMount = (editor) => {
 editorRef.current = editor;
 
 ```
-if (
-  role === "candidate" &&
-  socket
-) {
+if (role === "candidate" && socket) {
   editor.onDidChangeCursorPosition(
     (event) => {
       socket.emit(
@@ -109,7 +100,8 @@ setOutput("Running...");
 ```
   const response =
     await axios.post(
-      `${backendUrl}/api/code/run`,
+      backendUrl +
+        "/api/code/run",
       {
         code,
         language,
@@ -189,7 +181,7 @@ TypeScript </option>
     </button>
   </div>
 
-  {/* Monaco */}
+  {/* Monaco Editor */}
   <div className="flex-1 min-h-0 overflow-hidden">
     <Editor
       height="100%"
