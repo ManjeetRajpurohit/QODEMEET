@@ -77,8 +77,8 @@ const InterviewRoom = () => {
   const [output, setOutput] =
     useState("");
 
-  const isPresentationMode =
-    isScreenSharing || remoteScreenSharing;
+ const isPresentationMode =
+  isScreenSharing;
 
   const fetchInterview = async () => {
     try {
