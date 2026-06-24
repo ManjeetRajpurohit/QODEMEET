@@ -1,56 +1,59 @@
 import React from "react";
+import {
+  Video,
+  VideoOff,
+  Monitor,
+} from "lucide-react";
 
 const VideoSection = ({
   localVideoRef,
   remoteVideoRef,
   isScreenSharing,
 }) => {
-  if (isScreenSharing) {
-    return (
-      <div className="relative w-full h-full min-h-[600px] bg-black">
+  return (
+    <div className="h-full flex flex-col gap-3 p-3 bg-[#020617]">
+      {/* Remote Participant */}
+      <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220] relative">
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          controls={false}
-          className="w-full h-full object-contain"
+          className="w-full h-full object-cover"
         />
 
-        <div className="absolute bottom-5 right-5 w-64 h-40 rounded-xl overflow-hidden border border-white/20 shadow-2xl bg-black z-10">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
-            controls={false}
-            className="w-full h-full object-cover"
-          />
+        <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
+          <Video size={12} />
+          Remote Participant
+        </div>
+
+        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
+          Live
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="flex flex-col">
-      <div className="h-44 p-3">
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          controls={false}
-          className="w-full h-full rounded-xl bg-black object-cover"
-        />
-      </div>
-
-      <div className="h-44 p-3 pt-0">
+      {/* Local Participant */}
+      <div className="h-44 rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220] relative flex-shrink-0">
         <video
           ref={localVideoRef}
           autoPlay
           muted
           playsInline
-          controls={false}
-          className="w-full h-full rounded-xl bg-black object-cover"
+          className="w-full h-full object-cover"
         />
+
+        <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
+          {isScreenSharing ? (
+            <>
+              <Monitor size={12} />
+              Sharing Screen
+            </>
+          ) : (
+            <>
+              <VideoOff size={12} />
+              You
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
