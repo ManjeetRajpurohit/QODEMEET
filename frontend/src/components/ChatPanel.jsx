@@ -42,7 +42,7 @@ Chat </div>
 
           return (
             <div
-              key={`${index}-${msg.createdAt || ""}`}
+              key={index}
               className={
                 isOwnMessage
                   ? "flex justify-end"
@@ -73,9 +73,7 @@ Chat </div>
       )
     )}
 
-    <div
-      ref={messagesEndRef}
-    />
+    <div ref={messagesEndRef} />
   </div>
 
   {/* Input */}
@@ -89,10 +87,8 @@ Chat </div>
       }
       onKeyDown={(e) => {
         if (
-          e.key === "Enter" &&
-          !e.shiftKey
+          e.key === "Enter"
         ) {
-          e.preventDefault();
           handleSendMessage();
         }
       }}
@@ -104,14 +100,7 @@ Chat </div>
       onClick={
         handleSendMessage
       }
-      disabled={
-        !inputMessage.trim()
-      }
-      className={`w-10 h-10 rounded-xl flex items-center justify-center text-white transition-all duration-200 ${
-        inputMessage.trim()
-          ? "bg-violet-600 hover:bg-violet-700"
-          : "bg-gray-700 cursor-not-allowed"
-      }`}
+      className="w-10 h-10 rounded-xl bg-violet-600 hover:bg-violet-700 flex items-center justify-center text-white"
     >
       <Send size={16} />
     </button>
