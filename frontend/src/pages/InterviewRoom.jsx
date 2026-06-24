@@ -330,12 +330,44 @@ const InterviewRoom = () => {
       </div>
 
       {/* Main */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {isPresentationMode ? (
-          <PresentationView
-            localVideoRef={localVideoRef}
-            remoteVideoRef={remoteVideoRef}
-            isScreenSharing={isScreenSharing}
+<div className="flex-1 overflow-hidden">
+  {isPresentationMode ? (
+    <PresentationView
+      localVideoRef={localVideoRef}
+      remoteVideoRef={remoteVideoRef}
+      isScreenSharing={isScreenSharing}
+      code={code}
+      setCode={setCode}
+      language={language}
+      setLanguage={setLanguage}
+      role={user?.role}
+      socket={socket}
+      roomId={roomId}
+      setOutput={setOutput}
+      messages={messages}
+      user={user}
+      inputMessage={inputMessage}
+      setInputMessage={setInputMessage}
+      handleSendMessage={handleSendMessage}
+    />
+  ) : (
+    <div className="h-full flex overflow-hidden">
+      
+      {/* LEFT SIDE */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+
+        {/* Questions */}
+        <div className="h-[260px] border-b border-white/10 overflow-y-auto">
+          <QuestionPanel
+            questions={interview.questions || []}
+            activeQuestion={activeQuestion}
+            setActiveQuestion={setActiveQuestion}
+          />
+        </div>
+
+        {/* Editor */}
+        <div className="flex-1 min-h-0 border-b border-white/10">
+          <CodeEditor
             code={code}
             setCode={setCode}
             language={language}
@@ -344,83 +376,39 @@ const InterviewRoom = () => {
             socket={socket}
             roomId={roomId}
             setOutput={setOutput}
+          />
+        </div>
+
+        {/* Output */}
+        <div className="h-40">
+          <Output output={output} />
+        </div>
+      </div>
+
+      {/* RIGHT SIDE */}
+      <div className="w-[420px] border-l border-white/10 flex flex-col overflow-hidden">
+
+        <div className="h-[320px] border-b border-white/10">
+          <VideoSection
+            localVideoRef={localVideoRef}
+            remoteVideoRef={remoteVideoRef}
+            isScreenSharing={isScreenSharing}
+          />
+        </div>
+
+        <div className="flex-1 min-h-0">
+          <ChatPanel
             messages={messages}
             user={user}
             inputMessage={inputMessage}
             setInputMessage={setInputMessage}
             handleSendMessage={handleSendMessage}
           />
-        ) : (
-          <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden transition-all duration-300 ease-in-out">
-            {/* Left Workspace */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-              <div className="flex-[2] min-h-0 border-b border-white/10 overflow-hidden">
-                <CodeEditor
-                  code={code}
-                  setCode={setCode}
-                  language={language}
-                  setLanguage={setLanguage}
-                  role={user?.role}
-                  socket={socket}
-                  roomId={roomId}
-                  setOutput={setOutput}
-                />
-              </div>
-
-              <div className="h-40 flex-shrink-0 border-b border-white/10">
-                <Output output={output} />
-              </div>
-
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <QuestionPanel
-                  questions={
-                    interview.questions || []
-                  }
-                  activeQuestion={
-                    activeQuestion
-                  }
-                  setActiveQuestion={
-                    setActiveQuestion
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Right Sidebar */}
-            <div className="w-full lg:w-[380px] border-l border-white/10 bg-[#020617] flex flex-col overflow-hidden">
-              <div className="h-[320px] flex-shrink-0 border-b border-white/10">
-                <VideoSection
-                  localVideoRef={
-                    localVideoRef
-                  }
-                  remoteVideoRef={
-                    remoteVideoRef
-                  }
-                  isScreenSharing={
-                    isScreenSharing
-                  }
-                />
-              </div>
-
-              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                <ChatPanel
-                  messages={messages}
-                  user={user}
-                  inputMessage={
-                    inputMessage
-                  }
-                  setInputMessage={
-                    setInputMessage
-                  }
-                  handleSendMessage={
-                    handleSendMessage
-                  }
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
+    </div>
+  )}
+</div>
 
       {/* Bottom Controls */}
       <div className="flex-shrink-0">
