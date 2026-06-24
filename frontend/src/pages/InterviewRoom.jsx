@@ -4,6 +4,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import PresentationView from "../components/PresentationView";
 import axios from "axios";
 import { io } from "socket.io-client";
 import { toast } from "react-toastify";
@@ -43,7 +44,7 @@ const InterviewRoom = () => {
     [backendUrl]
   );
 
-  const {
+ const {
   localVideoRef,
   remoteVideoRef,
   toggleMic,
@@ -53,6 +54,7 @@ const InterviewRoom = () => {
   micEnabled,
   cameraEnabled,
   isScreenSharing,
+  remoteScreenSharing,
 } = useWebRTC(socket, roomId);
 
   const [interview, setInterview] =
@@ -75,7 +77,8 @@ const InterviewRoom = () => {
 
   const [output, setOutput] =
     useState("");
-
+ const isPresentationMode =
+  isScreenSharing || remoteScreenSharing;
   const fetchInterview = async () => {
     try {
       const response = await axios.get(
@@ -330,26 +333,85 @@ const InterviewRoom = () => {
       </div>
 
       {/* Main */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* Left Workspace */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Editor Area */}
-          <div className="flex-[2] min-h-0 border-b border-white/10 overflow-hidden">
-            <CodeEditor
-              code={code}
-              setCode={setCode}
-              language={language}
-              setLanguage={
-                setLanguage
-              }
-              role={user?.role}
-              socket={socket}
-              roomId={roomId}
-              setOutput={
-                setOutput
-              }
-            />
-          </div>
+  {/* Main */}
+<div className="flex-1 min-h-0 overflow-hidden">
+  {isPresentationMode ? (
+    <PresentationView
+      localVideoRef={localVideoRef}
+      remoteVideoRef={remoteVideoRef}
+      isScreenSharing={isScreenSharing}
+      code={code}
+      setCode={setCode}
+      language={language}
+      setLanguage={setLanguage}
+      role={user?.role}
+      socket={socket}
+      roomId={roomId}
+      setOutput={setOutput}
+      messages={messages}
+      user={user}
+      inputMessage={inputMessage}
+      setInputMessage={setInputMessage}
+      handleSendMessage={handleSendMessage}
+    />
+  ) : (
+    <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden transition-all duration-300 ease-in-out">
+      {/* Left Workspace */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Editor Area */}
+        <div className="flex-[2] min-h-0 border-b border-white/10 overflow-hidden">
+          <CodeEditor
+            code={code}
+            setCode={setCode}
+            language={language}
+            setLanguage={setLanguage}
+            role={user?.role}
+            socket={socket}
+            roomId={roomId}
+            setOutput={setOutput}
+          />
+        </div>
+
+        {/* Output */}
+        <div className="h-40 flex-shrink-0 border-b border-white/10">
+          <Output output={output} />
+        </div>
+
+        {/* Questions */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <QuestionPanel
+            questions={interview.questions || []}
+            activeQuestion={activeQuestion}
+            setActiveQuestion={setActiveQuestion}
+          />
+        </div>
+      </div>
+
+      {/* Right Sidebar */}
+      <div className="w-full lg:w-[380px] border-l border-white/10 bg-[#020617] flex flex-col overflow-hidden">
+        {/* Video */}
+        <div className="h-[320px] flex-shrink-0 border-b border-white/10">
+          <VideoSection
+            localVideoRef={localVideoRef}
+            remoteVideoRef={remoteVideoRef}
+            isScreenSharing={isScreenSharing}
+          />
+        </div>
+
+        {/* Chat */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <ChatPanel
+            messages={messages}
+            user={user}
+            inputMessage={inputMessage}
+            setInputMessage={setInputMessage}
+            handleSendMessage={handleSendMessage}
+          />
+        </div>
+      </div>
+    </div>
+  )}
+</div>
 
           {/* Output */}
           <div className="h-40 flex-shrink-0 border-b border-white/10">
