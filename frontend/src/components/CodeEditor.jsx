@@ -214,6 +214,3 @@ return (
 };
 
 export default CodeEditor;
-
-
-export default CodeEditor;
