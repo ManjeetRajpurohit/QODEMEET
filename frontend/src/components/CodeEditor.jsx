@@ -133,97 +133,87 @@ setOutput("Running...");
 
 };
 
-return ( <div className="h-full flex flex-col overflow-hidden bg-[#020617]">
-{/* Toolbar */} <div className="border-b border-white/10 px-4 py-3 flex flex-col md:flex-row gap-3 md:items-center md:justify-between flex-shrink-0"> <div className="flex items-center gap-3 flex-wrap">
-<select
-value={language}
-onChange={
-handleLanguageChange
-}
-disabled={
-role ===
-"interviewer"
-}
-className="bg-[#0B1220] border border-white/10 rounded-lg px-3 py-2 text-white outline-none"
-> <option value="typescript">
-TypeScript </option>
+return (
+
+  <div className="h-full flex flex-col overflow-hidden bg-[#020617]">
+    {/* Toolbar */}
+    <div className="border-b border-white/10 px-4 py-3 flex flex-col md:flex-row gap-3 md:items-center md:justify-between flex-shrink-0">
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={language}
+          onChange={handleLanguageChange}
+          disabled={role === "interviewer"}
+          className="bg-[#0B1220] border border-white/10 rounded-lg px-3 py-2 text-white outline-none"
+        >
+          <option value="typescript">
+            TypeScript
+          </option>
 
 ```
-        <option value="javascript">
-          JavaScript
-        </option>
+      <option value="javascript">
+        JavaScript
+      </option>
 
-        <option value="python">
-          Python
-        </option>
+      <option value="python">
+        Python
+      </option>
 
-        <option value="java">
-          Java
-        </option>
+      <option value="java">
+        Java
+      </option>
 
-        <option value="cpp">
-          C++
-        </option>
-      </select>
+      <option value="cpp">
+        C++
+      </option>
+    </select>
 
-      <span className="text-gray-400 text-sm">
-        solution.
-        {language}
-      </span>
-    </div>
-
-    <button
-      onClick={runCode}
-      className="px-4 py-2 border border-white/10 rounded-lg text-white flex items-center gap-2 hover:bg-[#0B1220] transition-all duration-200"
-    >
-      <Play size={15} />
-      Run
-    </button>
+    <span className="text-gray-400 text-sm">
+      solution.{language}
+    </span>
   </div>
 
-  {/* Monaco Editor */}
-  <div className="flex-1 min-h-0 overflow-hidden">
-    <Editor
-      height="100%"
-      theme="vs-dark"
-      language={language}
-      value={code}
-      onChange={
-        handleCodeChange
-      }
-      onMount={
-        handleEditorDidMount
-      }
-      options={{
-        readOnly:
-          role ===
-          "interviewer",
+  <button
+    onClick={runCode}
+    className="px-4 py-2 border border-white/10 rounded-lg text-white flex items-center gap-2 hover:bg-[#0B1220] transition-all duration-200"
+  >
+    <Play size={15} />
+    Run
+  </button>
+</div>
 
-        minimap: {
-          enabled: false,
-        },
-
-        fontSize: 15,
-
-        automaticLayout: true,
-
-        scrollBeyondLastLine:
-          false,
-
-        wordWrap: "on",
-
-        smoothScrolling: true,
-
-        padding: {
-          top: 12,
-        },
-      }}
-    />
-  </div>
+{/* Monaco Editor */}
+<div className="flex-1 min-h-0 overflow-hidden">
+  <Editor
+    height="100%"
+    theme="vs-dark"
+    language={language}
+    value={code}
+    onChange={handleCodeChange}
+    onMount={handleEditorDidMount}
+    options={{
+      readOnly:
+        role === "interviewer",
+      minimap: {
+        enabled: false,
+      },
+      fontSize: 15,
+      automaticLayout: true,
+      scrollBeyondLastLine: false,
+      wordWrap: "on",
+      smoothScrolling: true,
+      padding: {
+        top: 12,
+      },
+    }}
+  />
 </div>
 ```
 
+  </div>
 );
 };
+
+export default CodeEditor;
+
 
 export default CodeEditor;
