@@ -44,15 +44,16 @@ const InterviewRoom = () => {
   );
 
   const {
-    localVideoRef,
-    remoteVideoRef,
-    toggleMic,
-    toggleCamera,
-    shareScreen,
-    endCall,
-    micEnabled,
-    cameraEnabled,
-  } = useWebRTC(socket, roomId);
+  localVideoRef,
+  remoteVideoRef,
+  toggleMic,
+  toggleCamera,
+  shareScreen,
+  endCall,
+  micEnabled,
+  cameraEnabled,
+  isScreenSharing,
+} = useWebRTC(socket, roomId);
 
   const [interview, setInterview] =
     useState(null);
