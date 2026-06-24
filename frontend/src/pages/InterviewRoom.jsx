@@ -376,17 +376,11 @@ const InterviewRoom = () => {
         <div className="w-[380px] border-l border-white/10 bg-[#020617] flex flex-col overflow-hidden">
           {/* Video */}
           <div className="h-[320px] flex-shrink-0 border-b border-white/10">
-            <VideoSection
-              localVideoRef={
-                localVideoRef
-              }
-              remoteVideoRef={
-                remoteVideoRef
-              }
-              isScreenSharing={
-                false
-              }
-            />
+           <VideoSection
+  localVideoRef={localVideoRef}
+  remoteVideoRef={remoteVideoRef}
+  isScreenSharing={isScreenSharing}
+/>
           </div>
 
           {/* Chat */}
