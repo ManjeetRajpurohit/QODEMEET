@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
-import { CalendarDays, Clock, Plus } from "lucide-react";
+import { CalendarDays, Clock, Plus, RefreshCw } from "lucide-react";
 import { toast } from "react-toastify";
 import axios from "axios";
 import { AppContext } from "../context/Appcontext.jsx";
@@ -116,6 +116,22 @@ const MyInterviews = () => {
       fetchInterviews();
     }
   }, [token]);
+
+  // The list was only ever fetched once on mount, so if the
+  // interviewer starts the interview AFTER this page loaded, the
+  // candidate kept seeing the stale "scheduled" status - which
+  // renders the disabled "Waiting" button instead of the working
+  // "Join Interview" button. Poll quietly in the background so the
+  // status (and therefore the button) updates on its own.
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = setInterval(() => {
+      fetchInterviews();
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [token]);
   return (
     <div className="min-h-screen bg-[#030712] p-8">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5 mb-8">
@@ -125,15 +141,25 @@ const MyInterviews = () => {
           <p className="text-gray-400 mt-2">Manage your interviews.</p>
         </div>
 
-        {user?.role === "interviewer" && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/dashboard/schedule")}
-            className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white font-medium hover:opacity-90 transition"
+            onClick={fetchInterviews}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#0B1220] border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition"
           >
-            <Plus size={18} />
-            Schedule Interview
+            <RefreshCw size={16} />
+            Refresh
           </button>
-        )}
+
+          {user?.role === "interviewer" && (
+            <button
+              onClick={() => navigate("/dashboard/schedule")}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white font-medium hover:opacity-90 transition"
+            >
+              <Plus size={18} />
+              Schedule Interview
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-8">
