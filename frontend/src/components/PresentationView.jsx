@@ -27,6 +27,15 @@ const PresentationView = ({
   setInputMessage,
   handleSendMessage,
 }) => {
+  const mainVideoRef =
+    isScreenSharing
+        ? localVideoRef
+        : remoteVideoRef;
+
+const floatingVideoRef =
+    isScreenSharing
+        ? remoteVideoRef
+        : localVideoRef;
   return (
     <div className="h-full flex flex-col bg-[#020617] overflow-hidden animate-in fade-in duration-300">
       {/* Presentation Area */}
@@ -34,9 +43,7 @@ const PresentationView = ({
         {/* Shared Screen / Main Video */}
         <video
           ref={
-            isScreenSharing
-              ? localVideoRef
-              : remoteVideoRef
+          mainVideoRef
           }
           autoPlay
           playsInline
@@ -53,9 +60,7 @@ const PresentationView = ({
         <div className="absolute bottom-4 right-4 w-56 h-36 md:w-64 md:h-40 rounded-2xl overflow-hidden border border-white/20 bg-[#0B1220] shadow-2xl z-20">
           <video
             ref={
-              isScreenSharing
-                ? remoteVideoRef
-                : localVideoRef
+              floatingVideoRef
             }
             autoPlay
             muted={!isScreenSharing}
