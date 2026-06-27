@@ -121,20 +121,22 @@ const schedule = async (req, res) => {
     // network blip on the mail send used to bubble up into the outer
     // catch below and report "failed" to the interviewer even though
     // the interview had already been created.
-    try {
-      await sendInterviewScheduledMail(
-        candidateUser.email,
-        candidateUser.name,
-        title,
-        interviewerUser.name,
-        date,
-        time,
-        expectedDuration,
-        language,
-      );
-    } catch (mailError) {
+    // Don't await this - the response should return as soon as the
+    // interview is saved. Awaiting here means a slow/blocked SMTP
+    // connection makes the whole request (and the interviewer's
+    // browser) hang until it resolves or times out.
+    sendInterviewScheduledMail(
+      candidateUser.email,
+      candidateUser.name,
+      title,
+      interviewerUser.name,
+      date,
+      time,
+      expectedDuration,
+      language,
+    ).catch((mailError) => {
       console.log("Failed to send schedule mail:", mailError);
-    }
+    });
 
     return res.json({
       success: true,
@@ -215,15 +217,13 @@ const cancelInterview = async (req, res) => {
       });
     }
 
-    try {
-      await sendInterviewCancelledMail(
-        interview.candidate.email,
-        interview.candidate.name,
-        interview.title,
-      );
-    } catch (mailError) {
+    sendInterviewCancelledMail(
+      interview.candidate.email,
+      interview.candidate.name,
+      interview.title,
+    ).catch((mailError) => {
       console.log("Failed to send cancellation mail:", mailError);
-    }
+    });
 
     return res.json({
       success: true,
@@ -303,15 +303,13 @@ const endInterview = async (req, res) => {
 
     await interview.save();
 
-    try {
-      await sendInterviewEndedMail(
-        interview.candidate.email,
-        interview.candidate.name,
-        interview.title,
-      );
-    } catch (mailError) {
+    sendInterviewEndedMail(
+      interview.candidate.email,
+      interview.candidate.name,
+      interview.title,
+    ).catch((mailError) => {
       console.log("Failed to send end-of-interview mail:", mailError);
-    }
+    });
 
     return res.json({
       success: true,
@@ -346,16 +344,14 @@ const startInterview = async (req, res) => {
 
     await interview.save();
 
-    try {
-      await sendInterviewStartedMail(
-        interview.candidate.email,
-        interview.candidate.name,
-        interview.title,
-        interview._id,
-      );
-    } catch (mailError) {
+    sendInterviewStartedMail(
+      interview.candidate.email,
+      interview.candidate.name,
+      interview.title,
+      interview._id,
+    ).catch((mailError) => {
       console.log("Failed to send interview-started mail:", mailError);
-    }
+    });
 
     return res.json({
       success: true,
