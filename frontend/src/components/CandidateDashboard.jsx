@@ -78,20 +78,20 @@ const CandidateDashboard = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#030712] p-8">
+    <div className="min-h-screen bg-[#030712] p-4 sm:p-6 lg:p-8">
       {/* Top Bar */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="flex flex-row items-center gap-3 text-4xl font-bold text-white">
-            Welcome Back <Handshake size={32} />
+          <h1 className="flex flex-row items-center gap-3 text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
+            Welcome Back <Handshake size={28} className="shrink-0" />
           </h1>
 
-          <p className="text-gray-400 mt-2">
+          <p className="text-gray-400 mt-2 text-sm sm:text-base">
             Track your interview preparation and upcoming sessions.
           </p>
         </div>
 
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-5 self-end sm:self-auto">
           <div
             className="relative"
             ref={menuRef}
@@ -102,11 +102,11 @@ const CandidateDashboard = () => {
               onClick={() => setShowProfileMenu(!showProfileMenu)}
               className="flex items-center gap-3"
             >
-              <div className="h-12 w-12 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 flex items-center justify-center text-white font-bold text-lg">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 flex items-center justify-center text-white font-bold text-lg shrink-0">
                 {user?.name?.charAt(0).toUpperCase()}
               </div>
 
-              <div className="text-left">
+              <div className="text-left hidden sm:block">
                 <h3 className="text-white font-semibold">{user?.name}</h3>
 
                 <p className="text-sm text-gray-400 capitalize">{user?.role}</p>
@@ -114,7 +114,7 @@ const CandidateDashboard = () => {
             </button>
 
             {showProfileMenu && (
-              <div className="absolute right-0 top-full pt-2 w-80 z-50">
+              <div className="absolute right-0 top-full pt-2 w-[88vw] max-w-80 z-50">
                 <div className="bg-[#0B1220] border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
                   <div className="p-6 text-center border-b border-white/10">
                     <div className="h-20 w-20 mx-auto rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 flex items-center justify-center text-white text-3xl font-bold">
