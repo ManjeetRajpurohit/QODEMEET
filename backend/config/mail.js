@@ -15,4 +15,16 @@ const transporter = nodemailer.createTransport({
   socketTimeout: 15000,     // max time for the socket to stay idle
 });
 
+// Verify credentials/connectivity once at server boot instead of only
+// finding out when a real interview gets scheduled. This will print
+// the EXACT reason mail is failing (bad auth, blocked port, etc.)
+// straight into your Render logs on deploy.
+transporter.verify((error, success) => {
+  if (error) {
+    console.log("MAIL CONFIG ERROR - emails will not send:", error);
+  } else {
+    console.log("Mail server is ready to send messages.");
+  }
+});
+
 export default transporter;
