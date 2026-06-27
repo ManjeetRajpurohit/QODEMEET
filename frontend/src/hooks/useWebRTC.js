@@ -157,13 +157,20 @@ export default function useWebRTC(socket, roomId) {
 
     peer.ontrack = (event) => {
       const stream =
-        event.streams?.[0];
+    remoteVideoRef.current?.srcObject ||
+    new MediaStream();
 
-      if (!stream) return;
+stream.getTracks().forEach(track=>{
+    stream.removeTrack(track);
+});
 
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject =
-          stream;
+event.streams[0]
+    .getTracks()
+    .forEach(track=>{
+        stream.addTrack(track);
+    });
+
+remoteVideoRef.current.srcObject = stream;
 
         remoteVideoRef.current
           .play()
