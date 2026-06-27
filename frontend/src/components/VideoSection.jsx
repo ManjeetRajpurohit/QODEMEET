@@ -15,7 +15,13 @@ const VideoSection = ({
         }
 
         if (remoteVideoRef?.current) {
-          await remoteVideoRef.current.play().catch(() => {});
+          if (
+    remoteVideoRef.current?.srcObject
+) {
+    remoteVideoRef.current
+        .play()
+        .catch(()=>{});
+}
         }
       } catch (error) {
         console.error(
@@ -25,10 +31,9 @@ const VideoSection = ({
       }
     };
 
-    const timer = setTimeout(
-      attachVideos,
-      100
-    );
+    const timer =requestAnimationFrame(
+    attachVideos
+);
 
     return () => {
       clearTimeout(timer);
