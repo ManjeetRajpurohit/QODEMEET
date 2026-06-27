@@ -93,4 +93,69 @@ const sendInterviewScheduledMail = async (
   });
 };
 
-export {sendInterviewStartedMail,sendInterviewScheduledMail};
+const sendInterviewEndedMail = async (
+  candidateEmail,
+  candidateName,
+  interviewTitle
+) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: candidateEmail,
+    subject: `Interview Completed - ${interviewTitle}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;">
+        <h2>Hello ${candidateName},</h2>
+
+        <p>
+          Your interview <b>${interviewTitle}</b> has ended.
+        </p>
+
+        <p>
+          Your report will be shared with you once it is ready.
+        </p>
+
+        <p style="margin-top:20px">
+          Regards,<br/>
+          QodeMeet Team
+        </p>
+      </div>
+    `,
+  });
+};
+
+const sendInterviewCancelledMail = async (
+  candidateEmail,
+  candidateName,
+  interviewTitle
+) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: candidateEmail,
+    subject: `Interview Cancelled - ${interviewTitle}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;">
+        <h2>Hello ${candidateName},</h2>
+
+        <p>
+          Your interview <b>${interviewTitle}</b> has been cancelled by the interviewer.
+        </p>
+
+        <p>
+          Please check your dashboard for further updates.
+        </p>
+
+        <p style="margin-top:20px">
+          Regards,<br/>
+          QodeMeet Team
+        </p>
+      </div>
+    `,
+  });
+};
+
+export {
+  sendInterviewStartedMail,
+  sendInterviewScheduledMail,
+  sendInterviewEndedMail,
+  sendInterviewCancelledMail,
+};
