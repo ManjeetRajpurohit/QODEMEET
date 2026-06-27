@@ -16,7 +16,7 @@ const DashboardLayout = () => {
     <div className="min-h-screen bg-[#030712]">
       <Sidebar/>
 
-      <main className="ml-64 min-h-screen">
+      <main className="lg:ml-64 min-h-screen pt-16 lg:pt-0">
         <Outlet  />
       </main>
     </div>
