@@ -1,9 +1,5 @@
 import React from "react";
-import {
-  Monitor,
-  Video,
-} from "lucide-react";
-
+import { Monitor } from "lucide-react";
 import CodeEditor from "./CodeEditor";
 import ChatPanel from "./ChatPanel";
 
@@ -11,7 +7,7 @@ const PresentationView = ({
   localVideoRef,
   remoteVideoRef,
   isScreenSharing,
-
+  remoteScreenSharing,
   code,
   setCode,
   language,
@@ -20,67 +16,58 @@ const PresentationView = ({
   socket,
   roomId,
   setOutput,
-
   messages,
   user,
   inputMessage,
   setInputMessage,
   handleSendMessage,
 }) => {
-  const mainVideoRef =
-    isScreenSharing
-        ? localVideoRef
-        : remoteVideoRef;
+  // Whoever is sharing, their video element is the one carrying the
+  // screen content (the hook swaps the actual track underneath it).
+  const bigVideoRef = isScreenSharing
+    ? localVideoRef
+    : remoteVideoRef;
 
-const floatingVideoRef =
-    isScreenSharing
-        ? remoteVideoRef
-        : localVideoRef;
+  const pipVideoRef = isScreenSharing
+    ? remoteVideoRef
+    : localVideoRef;
+
+  const sharerLabel = isScreenSharing
+    ? "Your screen"
+    : "Remote screen";
+
   return (
-    <div className="h-full flex flex-col bg-[#020617] overflow-hidden animate-in fade-in duration-300">
-      {/* Presentation Area */}
-      <div className="flex-1 min-h-0 relative bg-black border-b border-white/10 overflow-hidden">
-        {/* Shared Screen / Main Video */}
+    <div className="h-full flex overflow-hidden">
+      {/* Presentation stage */}
+      <div className="flex-1 min-w-0 relative bg-black flex items-center justify-center overflow-hidden">
         <video
-          ref={
-          mainVideoRef
-          }
+          ref={bigVideoRef}
           autoPlay
           playsInline
-          className="w-full h-full object-cover"
+          muted={bigVideoRef === localVideoRef}
+          className="w-full h-full object-contain bg-black"
         />
 
-        {/* Presentation Badge */}
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-white text-sm">
-          <Monitor size={16} />
-          Presentation Mode
+        <div className="absolute top-4 left-4 bg-black/60 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-2">
+          <Monitor size={14} />
+          {sharerLabel}
         </div>
 
-        {/* Floating Video */}
-        <div className="absolute bottom-4 right-4 w-56 h-36 md:w-64 md:h-40 rounded-2xl overflow-hidden border border-white/20 bg-[#0B1220] shadow-2xl z-20">
+        {/* PIP camera bubble - the other feed (camera, not screen) */}
+        <div className="absolute bottom-4 right-4 w-44 h-28 rounded-xl overflow-hidden border border-white/20 shadow-lg bg-[#0B1220]">
           <video
-            ref={
-              floatingVideoRef
-            }
+            ref={pipVideoRef}
             autoPlay
-            muted={!isScreenSharing}
             playsInline
+            muted={pipVideoRef === localVideoRef}
             className="w-full h-full object-cover"
           />
-
-          <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded-full text-xs text-white flex items-center gap-1">
-            <Video size={12} />
-            {isScreenSharing
-              ? "Participant"
-              : "You"}
-          </div>
         </div>
       </div>
 
-      {/* Bottom Workspace */}
-      <div className="h-[42%] min-h-[280px] grid grid-cols-1 lg:grid-cols-2 overflow-hidden">
-        {/* Code Editor */}
-        <div className="border-r border-white/10 min-h-0 overflow-hidden">
+      {/* Side panel: code + chat stay reachable while presenting */}
+      <div className="w-[380px] flex-shrink-0 border-l border-white/10 flex flex-col overflow-hidden">
+        <div className="h-1/2 min-h-0 border-b border-white/10">
           <CodeEditor
             code={code}
             setCode={setCode}
@@ -93,8 +80,7 @@ const floatingVideoRef =
           />
         </div>
 
-        {/* Chat */}
-        <div className="min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0">
           <ChatPanel
             messages={messages}
             user={user}
