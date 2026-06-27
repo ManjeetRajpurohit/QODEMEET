@@ -50,6 +50,7 @@ const InterviewRoom = () => {
     toggleMic,
     toggleCamera,
     shareScreen,
+    stopScreenShare,
     endCall,
     micEnabled,
     cameraEnabled,
@@ -417,6 +418,7 @@ const InterviewRoom = () => {
   toggleMic={toggleMic}
   toggleCamera={toggleCamera}
   shareScreen={shareScreen}
+  stopScreenShare={stopScreenShare}
   endCall={handleEndInterview}
   micEnabled={micEnabled}
   cameraEnabled={cameraEnabled}
