@@ -106,11 +106,17 @@ io.on("connection", (socket) => {
     });
   });
   socket.on("screen-share-started", (roomId) => {
-    socket.to(roomId).emit("screen-share-started");
+    io.to(roomId).emit(
+    "screen-share-started",
+    socket.id
+);
   });
 
   socket.on("screen-share-stopped", (roomId) => {
-    socket.to(roomId).emit("screen-share-stopped");
+    io.to(roomId).emit(
+    "screen-share-stopped",
+    socket.id
+);
   });
 
   socket.on("disconnect", () => {
