@@ -413,14 +413,15 @@ const InterviewRoom = () => {
       {/* Bottom Controls */}
       <div className="flex-shrink-0">
         <BottomControls
-          toggleMic={toggleMic}
-          toggleCamera={toggleCamera}
-          shareScreen={shareScreen}
-          endCall={handleEndInterview}
-          micEnabled={micEnabled}
-          cameraEnabled={cameraEnabled}
-          userRole={user?.role}
-        />
+  toggleMic={toggleMic}
+  toggleCamera={toggleCamera}
+  shareScreen={shareScreen}
+  endCall={handleEndInterview}
+  micEnabled={micEnabled}
+  cameraEnabled={cameraEnabled}
+  isScreenSharing={isScreenSharing}
+  userRole={user?.role}
+/>
       </div>
     </div>
   );
