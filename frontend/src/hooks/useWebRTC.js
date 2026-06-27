@@ -535,7 +535,19 @@ export default function useWebRTC(socket, roomId) {
       await sender.replaceTrack(
         screenTrack
       );
+       if (peerRef.current.signalingState === "stable") {
+    const offer =
+        await peerRef.current.createOffer();
 
+    await peerRef.current.setLocalDescription(
+        offer
+    );
+
+    socket.emit("offer", {
+        roomId,
+        offer: peerRef.current.localDescription,
+    });
+}
       if (localVideoRef.current) {
         localVideoRef.current.srcObject =
           screenStream;
@@ -564,6 +576,19 @@ export default function useWebRTC(socket, roomId) {
               await sender.replaceTrack(
                 cameraTrack
               );
+              if (peerRef.current.signalingState === "stable") {
+    const offer =
+        await peerRef.current.createOffer();
+
+    await peerRef.current.setLocalDescription(
+        offer
+    );
+
+    socket.emit("offer", {
+        roomId,
+        offer: peerRef.current.localDescription,
+    });
+}
             }
 
             if (
