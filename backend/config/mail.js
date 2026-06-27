@@ -1,29 +1,29 @@
 import nodemailer from "nodemailer";
+import dns from "dns";
+
+// Render's network has no outbound IPv6 routing.
+// Gmail's SMTP hostname resolves to both A (IPv4) and AAAA (IPv6) records,
+// and Node prefers IPv6 when both exist — causing ENETUNREACH on Render.
+// Forcing IPv4 first fixes DNS resolution globally for this process.
+dns.setDefaultResultOrder("ipv4first");
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // true for port 465, false for 587
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    pass: process.env.EMAIL_PASS, // Gmail App Password (not your normal Gmail password)
   },
-  // Without these, a blocked/slow SMTP connection has no real ceiling
-  // and can hang for minutes before Node's default OS-level timeout
-  // kicks in - and since the route awaits the mail send, the whole
-  // request (and the user's browser) just sits there waiting.
-  connectionTimeout: 10000, // max time to establish the connection
-  greetingTimeout: 10000,   // max time to wait for the SMTP greeting
-  socketTimeout: 15000,     // max time for the socket to stay idle
+  family: 4, // force IPv4 for this transporter's socket connections too
 });
 
-// Verify credentials/connectivity once at server boot instead of only
-// finding out when a real interview gets scheduled. This will print
-// the EXACT reason mail is failing (bad auth, blocked port, etc.)
-// straight into your Render logs on deploy.
-transporter.verify((error, success) => {
-  if (error) {
-    console.log("MAIL CONFIG ERROR - emails will not send:", error);
+// Optional: verify connection on startup, logs early if SMTP config/creds are wrong
+transporter.verify((err, success) => {
+  if (err) {
+    console.error("SMTP connection failed:", err.message);
   } else {
-    console.log("Mail server is ready to send messages.");
+    console.log("SMTP server is ready to send emails");
   }
 });
 
