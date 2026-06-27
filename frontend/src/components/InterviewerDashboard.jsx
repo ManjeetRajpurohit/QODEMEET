@@ -94,18 +94,18 @@ const InterviewerDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#030712] p-8">
+    <div className="min-h-screen bg-[#030712] p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
         <div>
-          <h1 className="text-4xl font-bold text-white">Welcome Back</h1>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Welcome Back</h1>
 
-          <p className="text-gray-400 mt-2">
+          <p className="text-gray-400 mt-2 text-sm sm:text-base">
             Manage interviews and candidate evaluations.
           </p>
         </div>
 
-        <div className="flex items-center gap-5">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-5">
           <button
             onClick={() => navigate("/dashboard/schedule")}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white font-medium hover:opacity-90 transition"
@@ -123,11 +123,11 @@ const InterviewerDashboard = () => {
               onClick={() => setShowProfileMenu(!showProfileMenu)}
               className="flex items-center gap-3"
             >
-              <div className="h-12 w-12 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 flex items-center justify-center text-white font-bold text-lg">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 flex items-center justify-center text-white font-bold text-lg shrink-0">
                 {user?.name?.charAt(0)?.toUpperCase() || "U"}
               </div>
 
-              <div>
+              <div className="hidden sm:block">
                 <h3 className="text-white font-semibold">{user?.name}</h3>
 
                 <p className="text-sm text-gray-400 capitalize">{user?.role}</p>
@@ -135,7 +135,7 @@ const InterviewerDashboard = () => {
             </button>
 
             {showProfileMenu && (
-              <div className="absolute right-0 mt-1 w-80 bg-[#0B1220] border border-white/10 rounded-3xl shadow-2xl z-50 overflow-hidden">
+              <div className="absolute right-0 mt-1 w-[88vw] max-w-80 bg-[#0B1220] border border-white/10 rounded-3xl shadow-2xl z-50 overflow-hidden">
                 <div className="p-6 text-center border-b border-white/10">
                   <div className="h-20 w-20 mx-auto rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 flex items-center justify-center text-white text-3xl font-bold">
                     {user?.name?.charAt(0)?.toUpperCase()}
@@ -219,7 +219,7 @@ const InterviewerDashboard = () => {
 
           <p className="text-gray-400 text-sm mt-4">Upcoming Interviews</p>
 
-          <h2 className="text-5xl font-bold text-white mt-2">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mt-2">
             {dashboardData.upcomingInterviews}
           </h2>
         </div>
@@ -229,7 +229,7 @@ const InterviewerDashboard = () => {
 
           <p className="text-gray-400 text-sm mt-4">Completed Interviews</p>
 
-          <h2 className="text-5xl font-bold text-white mt-2">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mt-2">
             {dashboardData.completedInterviews}
           </h2>
         </div>
@@ -239,7 +239,7 @@ const InterviewerDashboard = () => {
 
           <p className="text-gray-400 text-sm mt-4">Pending Reports</p>
 
-          <h2 className="text-5xl font-bold text-yellow-400 mt-2">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-yellow-400 mt-2">
             {dashboardData.pendingReports}
           </h2>
         </div>
@@ -249,7 +249,7 @@ const InterviewerDashboard = () => {
 
           <p className="text-gray-400 text-sm mt-4">Cancelled Interviews</p>
 
-          <h2 className="text-5xl font-bold text-white mt-2">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mt-2">
             {dashboardData.cancelledInterviews}
           </h2>
         </div>
