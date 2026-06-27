@@ -7,11 +7,22 @@ export default function useWebRTC(socket, roomId) {
   const peerRef = useRef(null);
   const localStreamRef = useRef(null);
 
-  // Tracks whichever stream SHOULD currently be shown locally
-  // (camera stream normally, screen stream while sharing).
-  // The polling effect below reads this instead of localStreamRef
-  // directly, so it stops force-reverting to camera during screen share.
+  // Whichever stream SHOULD currently be shown locally
+  // (camera normally, screen while sharing).
   const activeLocalStreamRef = useRef(null);
+
+  // The remote MediaStream, kept here independently of any
+  // particular <video> element so we can re-attach it whenever
+  // the ref target changes (e.g. switching between normal layout
+  // and presentation layout swaps which <video> tag holds
+  // remoteVideoRef - the new tag doesn't inherit srcObject
+  // automatically, so we have to reassign it).
+  const remoteStreamRef = useRef(null);
+
+  // Holds the current screen-capture track so the in-app
+  // "Stop Sharing" button can stop it directly, not just rely on
+  // the browser's native "Stop sharing" bar.
+  const screenTrackRef = useRef(null);
 
   const pendingCandidatesRef = useRef([]);
   const initializedRef = useRef(false);
@@ -72,19 +83,21 @@ export default function useWebRTC(socket, roomId) {
     };
   }, [socket, roomId]);
 
+  // Self-healing attach loop. Runs continuously and re-attaches
+  // whichever stream SHOULD be showing to whichever <video> element
+  // the refs currently point to - covers screen-share swaps AND
+  // layout swaps (normal <-> presentation) where the ref jumps to a
+  // different DOM node.
   useEffect(() => {
-    const attachLocalStream = () => {
+    const attachStreams = () => {
       if (
         localVideoRef.current &&
-        activeLocalStreamRef.current
-      ) {
-        if (
-          localVideoRef.current.srcObject !==
+        activeLocalStreamRef.current &&
+        localVideoRef.current.srcObject !==
           activeLocalStreamRef.current
-        ) {
-          localVideoRef.current.srcObject =
-            activeLocalStreamRef.current;
-        }
+      ) {
+        localVideoRef.current.srcObject =
+          activeLocalStreamRef.current;
 
         localVideoRef.current.muted = true;
 
@@ -92,14 +105,28 @@ export default function useWebRTC(socket, roomId) {
           .play()
           .catch(() => {});
       }
+
+      if (
+        remoteVideoRef.current &&
+        remoteStreamRef.current &&
+        remoteVideoRef.current.srcObject !==
+          remoteStreamRef.current
+      ) {
+        remoteVideoRef.current.srcObject =
+          remoteStreamRef.current;
+
+        remoteVideoRef.current
+          .play()
+          .catch(() => {});
+      }
     };
 
     const timer = setInterval(
-      attachLocalStream,
-      1000
+      attachStreams,
+      300
     );
 
-    attachLocalStream();
+    attachStreams();
 
     return () =>
       clearInterval(timer);
@@ -162,9 +189,11 @@ export default function useWebRTC(socket, roomId) {
     });
 
     peer.ontrack = (event) => {
-      if (remoteVideoRef.current) {
-        const incomingStream = event.streams[0];
+      const incomingStream = event.streams[0];
 
+      remoteStreamRef.current = incomingStream;
+
+      if (remoteVideoRef.current) {
         if (
           remoteVideoRef.current.srcObject !==
           incomingStream
@@ -465,6 +494,8 @@ export default function useWebRTC(socket, roomId) {
             false
           );
 
+          remoteStreamRef.current = null;
+
           if (
             remoteVideoRef.current
           ) {
@@ -530,6 +561,8 @@ export default function useWebRTC(socket, roomId) {
       const screenTrack =
         screenStream.getVideoTracks()[0];
 
+      screenTrackRef.current = screenTrack;
+
       const sender =
         peerRef.current
           ?.getSenders()
@@ -542,10 +575,9 @@ export default function useWebRTC(socket, roomId) {
       if (!sender) return;
 
       // replaceTrack alone swaps the outgoing video over the
-      // existing connection - no renegotiation/createOffer needed.
-      // Forcing an extra offer here bypassed the perfect-negotiation
-      // guard (makingOfferRef) and could collide with it, which is
-      // what was breaking the remote video.
+      // existing connection - no renegotiation needed, and
+      // forcing one here would bypass the perfect-negotiation
+      // guard (makingOfferRef) and risk colliding with it.
       await sender.replaceTrack(
         screenTrack
       );
@@ -569,49 +601,13 @@ export default function useWebRTC(socket, roomId) {
         roomId
       );
 
-      screenTrack.onended =
-        async () => {
-          try {
-            const cameraTrack =
-              localStreamRef.current?.getVideoTracks()[0];
-
-            if (
-              cameraTrack
-            ) {
-              await sender.replaceTrack(
-                cameraTrack
-              );
-            }
-
-            activeLocalStreamRef.current =
-              localStreamRef.current;
-
-            if (
-              localVideoRef.current &&
-              localStreamRef.current
-            ) {
-              localVideoRef.current.srcObject =
-                localStreamRef.current;
-
-              localVideoRef.current
-                .play()
-                .catch(
-                  () => {}
-                );
-            }
-
-            setIsScreenSharing(
-              false
-            );
-
-            socket.emit(
-              "screen-share-stopped",
-              roomId
-            );
-          } catch (err) {
-            console.error(err);
-          }
-        };
+      // Fires both when the user clicks our in-app "Stop Sharing"
+      // button (stopScreenShare calls screenTrack.stop(), which
+      // triggers this) and when they use the browser's native
+      // "Stop sharing" bar - one code path handles both.
+      screenTrack.onended = () => {
+        stopScreenShare();
+      };
     } catch (error) {
       console.error(
         "Screen Share Error:",
@@ -619,6 +615,62 @@ export default function useWebRTC(socket, roomId) {
       );
 
       setIsScreenSharing(false);
+    }
+  };
+
+  const stopScreenShare = async () => {
+    try {
+      if (!isScreenSharing) return;
+
+      const sender =
+        peerRef.current
+          ?.getSenders()
+          .find(
+            (s) =>
+              s.track?.kind ===
+              "video"
+          );
+
+      const cameraTrack =
+        localStreamRef.current?.getVideoTracks()[0];
+
+      if (sender && cameraTrack) {
+        await sender.replaceTrack(
+          cameraTrack
+        );
+      }
+
+      activeLocalStreamRef.current =
+        localStreamRef.current;
+
+      if (
+        localVideoRef.current &&
+        localStreamRef.current
+      ) {
+        localVideoRef.current.srcObject =
+          localStreamRef.current;
+
+        localVideoRef.current
+          .play()
+          .catch(() => {});
+      }
+
+      if (screenTrackRef.current) {
+        screenTrackRef.current.stop();
+        screenTrackRef.current = null;
+      }
+
+      setIsScreenSharing(false);
+
+      socket.emit(
+        "screen-share-stopped",
+        roomId
+      );
+    } catch (error) {
+      console.error(
+        "Stop Screen Share Error:",
+        error
+      );
     }
   };
 
@@ -639,6 +691,11 @@ export default function useWebRTC(socket, roomId) {
           );
       }
 
+      if (screenTrackRef.current) {
+        screenTrackRef.current.stop();
+        screenTrackRef.current = null;
+      }
+
       if (peerRef.current) {
         peerRef.current.close();
       }
@@ -657,6 +714,8 @@ export default function useWebRTC(socket, roomId) {
           null;
       }
 
+      remoteStreamRef.current = null;
+
       setRemoteConnected(false);
       setIsScreenSharing(false);
       setRemoteScreenSharing(false);
@@ -671,6 +730,7 @@ export default function useWebRTC(socket, roomId) {
     toggleMic,
     toggleCamera,
     shareScreen,
+    stopScreenShare,
     endCall,
     micEnabled,
     cameraEnabled,
