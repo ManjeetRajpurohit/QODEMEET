@@ -2,6 +2,8 @@ import interviewModel from "../models/interviewModel.js";
 import {
   sendInterviewStartedMail,
   sendInterviewScheduledMail,
+  sendInterviewEndedMail,
+  sendInterviewCancelledMail,
 } from "../utils/sendInterviewMail.js";
 import userModel from "../models/userModel.js";
 const schedule = async (req, res) => {
@@ -114,16 +116,25 @@ const schedule = async (req, res) => {
     const candidateUser = await userModel.findById(candidate);
     const interviewerUser = await userModel.findById(interviewer);
 
-    await sendInterviewScheduledMail(
-      candidateUser.email,
-      candidateUser.name,
-      title,
-      interviewerUser.name,
-      date,
-      time,
-      expectedDuration,
-      language,
-    );
+    // Mail failures must NEVER fail this request - the interview is
+    // already saved at this point. A bad SMTP credential or a flaky
+    // network blip on the mail send used to bubble up into the outer
+    // catch below and report "failed" to the interviewer even though
+    // the interview had already been created.
+    try {
+      await sendInterviewScheduledMail(
+        candidateUser.email,
+        candidateUser.name,
+        title,
+        interviewerUser.name,
+        date,
+        time,
+        expectedDuration,
+        language,
+      );
+    } catch (mailError) {
+      console.log("Failed to send schedule mail:", mailError);
+    }
 
     return res.json({
       success: true,
@@ -187,19 +198,31 @@ const cancelInterview = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const interview = await interviewModel.findByIdAndUpdate(
-      id,
-      {
-        status: "cancelled",
-      },
-      { new: true },
-    );
+    const interview = await interviewModel
+      .findByIdAndUpdate(
+        id,
+        {
+          status: "cancelled",
+        },
+        { new: true },
+      )
+      .populate("candidate", "name email");
 
     if (!interview) {
       return res.json({
         success: false,
         message: "Interview not found",
       });
+    }
+
+    try {
+      await sendInterviewCancelledMail(
+        interview.candidate.email,
+        interview.candidate.name,
+        interview.title,
+      );
+    } catch (mailError) {
+      console.log("Failed to send cancellation mail:", mailError);
     }
 
     return res.json({
@@ -261,18 +284,46 @@ const getSingleInterview = async (req, res) => {
 };
 
 const endInterview = async (req, res) => {
-  const { id } = req.params;
+  try {
+    const { id } = req.params;
 
-  const interview = await interviewModel.findById(id);
+    const interview = await interviewModel
+      .findById(id)
+      .populate("candidate", "name email");
 
-  interview.status = "completed";
-  interview.endedAt = new Date();
+    if (!interview) {
+      return res.json({
+        success: false,
+        message: "Interview not found",
+      });
+    }
 
-  await interview.save();
+    interview.status = "completed";
+    interview.endedAt = new Date();
 
-  return res.json({
-    success: true,
-  });
+    await interview.save();
+
+    try {
+      await sendInterviewEndedMail(
+        interview.candidate.email,
+        interview.candidate.name,
+        interview.title,
+      );
+    } catch (mailError) {
+      console.log("Failed to send end-of-interview mail:", mailError);
+    }
+
+    return res.json({
+      success: true,
+    });
+  } catch (error) {
+    console.log(error);
+
+    return res.json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
 const startInterview = async (req, res) => {
@@ -295,16 +346,20 @@ const startInterview = async (req, res) => {
 
     await interview.save();
 
-    await sendInterviewStartedMail(
-      interview.candidate.email,
-      interview.candidate.name,
-      interview.title,
-      interview._id,
-    );
+    try {
+      await sendInterviewStartedMail(
+        interview.candidate.email,
+        interview.candidate.name,
+        interview.title,
+        interview._id,
+      );
+    } catch (mailError) {
+      console.log("Failed to send interview-started mail:", mailError);
+    }
 
     return res.json({
       success: true,
-      message: "Interview started and email sent",
+      message: "Interview started",
       interview,
     });
   } catch (error) {
