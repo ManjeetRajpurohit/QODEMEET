@@ -241,15 +241,23 @@ const verifyBill = async (req, res) => {
 
     await user.save();
 
-    await sendSubscriptionMail(
-      user.email,
-      user.name,
-      bill.plan,
-      bill.amount,
-      bill.orderId,
-      bill.paymentId,
-      bill._id
-    );
+    // Don't let a mail failure undo a successful, already-saved
+    // payment - this used to throw into the catch below and report
+    // "failed" to the user even though the payment had gone through
+    // and the subscription was already activated.
+    try {
+      await sendSubscriptionMail(
+        user.email,
+        user.name,
+        bill.plan,
+        bill.amount,
+        bill.orderId,
+        bill.paymentId,
+        bill._id
+      );
+    } catch (mailError) {
+      console.log("Failed to send subscription mail:", mailError);
+    }
 
     return res.json({
       success: true,
