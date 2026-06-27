@@ -7,11 +7,11 @@ import {
   MonitorUp,
   PhoneOff,
 } from "lucide-react";
-
 const BottomControls = ({
   toggleMic,
   toggleCamera,
   shareScreen,
+  stopScreenShare,
   endCall,
   micEnabled,
   cameraEnabled,
@@ -35,7 +35,6 @@ const BottomControls = ({
             <MicOff size={18} />
           )}
         </button>
-
         <button
           onClick={toggleCamera}
           className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
@@ -50,22 +49,23 @@ const BottomControls = ({
             <VideoOff size={18} />
           )}
         </button>
-
         <button
-          onClick={shareScreen}
-          disabled={isScreenSharing}
+          onClick={
+            isScreenSharing
+              ? stopScreenShare
+              : shareScreen
+          }
           className={`px-5 h-12 rounded-full border flex items-center gap-2 transition-all duration-200 ${
             isScreenSharing
-              ? "bg-blue-600 border-blue-500 text-white cursor-not-allowed"
+              ? "bg-blue-600 border-blue-500 text-white hover:bg-blue-700"
               : "bg-[#0B1220] border-white/10 text-white hover:bg-[#141d31]"
           }`}
         >
           <MonitorUp size={18} />
           {isScreenSharing
-            ? "Sharing..."
+            ? "Stop Sharing"
             : "Share Screen"}
         </button>
-
         <button
           onClick={endCall}
           className="px-6 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center gap-2 transition-all duration-200"
@@ -79,5 +79,5 @@ const BottomControls = ({
     </div>
   );
 };
-
 export default BottomControls;
+
