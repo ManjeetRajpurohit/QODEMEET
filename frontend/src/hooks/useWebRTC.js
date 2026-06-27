@@ -7,6 +7,12 @@ export default function useWebRTC(socket, roomId) {
   const peerRef = useRef(null);
   const localStreamRef = useRef(null);
 
+  // Tracks whichever stream SHOULD currently be shown locally
+  // (camera stream normally, screen stream while sharing).
+  // The polling effect below reads this instead of localStreamRef
+  // directly, so it stops force-reverting to camera during screen share.
+  const activeLocalStreamRef = useRef(null);
+
   const pendingCandidatesRef = useRef([]);
   const initializedRef = useRef(false);
 
@@ -70,14 +76,14 @@ export default function useWebRTC(socket, roomId) {
     const attachLocalStream = () => {
       if (
         localVideoRef.current &&
-        localStreamRef.current
+        activeLocalStreamRef.current
       ) {
         if (
           localVideoRef.current.srcObject !==
-          localStreamRef.current
+          activeLocalStreamRef.current
         ) {
           localVideoRef.current.srcObject =
-            localStreamRef.current;
+            activeLocalStreamRef.current;
         }
 
         localVideoRef.current.muted = true;
@@ -156,21 +162,16 @@ export default function useWebRTC(socket, roomId) {
     });
 
     peer.ontrack = (event) => {
-      const stream =
-    remoteVideoRef.current?.srcObject ||
-    new MediaStream();
+      if (remoteVideoRef.current) {
+        const incomingStream = event.streams[0];
 
-stream.getTracks().forEach(track=>{
-    stream.removeTrack(track);
-});
-
-event.streams[0]
-    .getTracks()
-    .forEach(track=>{
-        stream.addTrack(track);
-    });
-
-remoteVideoRef.current.srcObject = stream;
+        if (
+          remoteVideoRef.current.srcObject !==
+          incomingStream
+        ) {
+          remoteVideoRef.current.srcObject =
+            incomingStream;
+        }
 
         remoteVideoRef.current
           .play()
@@ -243,6 +244,7 @@ remoteVideoRef.current.srcObject = stream;
         );
 
       localStreamRef.current = stream;
+      activeLocalStreamRef.current = stream;
 
       const peer =
         createPeerConnection();
@@ -539,22 +541,18 @@ remoteVideoRef.current.srcObject = stream;
 
       if (!sender) return;
 
+      // replaceTrack alone swaps the outgoing video over the
+      // existing connection - no renegotiation/createOffer needed.
+      // Forcing an extra offer here bypassed the perfect-negotiation
+      // guard (makingOfferRef) and could collide with it, which is
+      // what was breaking the remote video.
       await sender.replaceTrack(
         screenTrack
       );
-       if (peerRef.current.signalingState === "stable") {
-    const offer =
-        await peerRef.current.createOffer();
 
-    await peerRef.current.setLocalDescription(
-        offer
-    );
+      activeLocalStreamRef.current =
+        screenStream;
 
-    socket.emit("offer", {
-        roomId,
-        offer: peerRef.current.localDescription,
-    });
-}
       if (localVideoRef.current) {
         localVideoRef.current.srcObject =
           screenStream;
@@ -583,20 +581,10 @@ remoteVideoRef.current.srcObject = stream;
               await sender.replaceTrack(
                 cameraTrack
               );
-              if (peerRef.current.signalingState === "stable") {
-    const offer =
-        await peerRef.current.createOffer();
-
-    await peerRef.current.setLocalDescription(
-        offer
-    );
-
-    socket.emit("offer", {
-        roomId,
-        offer: peerRef.current.localDescription,
-    });
-}
             }
+
+            activeLocalStreamRef.current =
+              localStreamRef.current;
 
             if (
               localVideoRef.current &&
