@@ -336,6 +336,7 @@ const InterviewRoom = () => {
       localVideoRef={localVideoRef}
       remoteVideoRef={remoteVideoRef}
       isScreenSharing={isScreenSharing}
+      remoteScreenSharing={remoteScreenSharing}
       code={code}
       setCode={setCode}
       language={language}
