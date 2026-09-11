@@ -11,13 +11,13 @@ const Login = () => {
 
   const { backendUrl, navigate, setToken } = useContext(AppContext);
 
-  const [email, setemail] = useState("");
+  const [username, setusername] = useState("");
   const [password, setpassword] = useState("");
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!email || !password) {
+    if (!username || !password) {
       return toast.error("Please fill all fields");
     }
 
@@ -25,7 +25,7 @@ const Login = () => {
       const response = await axios.post(
         backendUrl + "/api/user/login",
         {
-          email,
+          username,
           password,
           role,
         }
@@ -39,7 +39,7 @@ const Login = () => {
         toast.success("Login Successful");
 
         setRole("candidate");
-        setemail("");
+        setusername("");
         setpassword("");
 
         navigate("/dashboard");
@@ -85,21 +85,21 @@ const Login = () => {
 
           {/* Form */}
           <form onSubmit={handleLogin} className="space-y-6">
-            {/* Email */}
+            {/* Username */}
             <div>
               <label
-                htmlFor="email"
+                htmlFor="username"
                 className="block text-gray-300 mb-2"
               >
-                Email
+                Username
               </label>
 
               <input
-                value={email}
-                onChange={(e) => setemail(e.target.value)}
-                type="email"
-                id="email"
-                placeholder="sarah@interviewpro.com"
+                value={username}
+                onChange={(e) => setusername(e.target.value)}
+                type="text"
+                id="username"
+                placeholder="sarah_dev"
                 className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
               />
             </div>
