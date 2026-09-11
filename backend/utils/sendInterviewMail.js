@@ -45,11 +45,16 @@ const sendInterviewStartedMail = async (
   });
 };
 
+// Sent to one participant of a scheduled interview. counterpartRole/
+// counterpartName describe the *other* participant, so this same
+// function covers both the candidate's and the interviewer's copy -
+// call it once per recipient.
 const sendInterviewScheduledMail = async (
-  candidateEmail,
-  candidateName,
+  recipientEmail,
+  recipientName,
   title,
-  interviewerName,
+  counterpartRole,
+  counterpartName,
   date,
   time,
   duration,
@@ -57,13 +62,13 @@ const sendInterviewScheduledMail = async (
 ) => {
   await transporter.sendMail({
     from: process.env.EMAIL_USER,
-    to: candidateEmail,
+    to: recipientEmail,
     subject: `Interview Scheduled - ${title}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;">
-        <h2>Hello ${candidateName},</h2>
+        <h2>Hello ${recipientName},</h2>
 
-        <p>Your interview has been successfully scheduled.</p>
+        <p>An interview has been scheduled.</p>
 
         <div style="
           border:1px solid #ddd;
@@ -73,7 +78,7 @@ const sendInterviewScheduledMail = async (
         ">
           <h3>${title}</h3>
 
-          <p><b>Interviewer:</b> ${interviewerName}</p>
+          <p><b>${counterpartRole}:</b> ${counterpartName}</p>
           <p><b>Date:</b> ${new Date(date).toLocaleDateString()}</p>
           <p><b>Time:</b> ${time}</p>
           <p><b>Duration:</b> ${duration} Minutes</p>
@@ -81,7 +86,7 @@ const sendInterviewScheduledMail = async (
         </div>
 
         <p>
-          You will receive another email when the interviewer starts the interview.
+          You will receive another email when the interview starts.
         </p>
 
         <p>
@@ -159,3 +164,4 @@ export {
   sendInterviewEndedMail,
   sendInterviewCancelledMail,
 };
+
