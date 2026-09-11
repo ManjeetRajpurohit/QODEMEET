@@ -84,6 +84,12 @@ const Schedule = () => {
         return toast.error("Candidate does not exist");
       }
 
+      if (!userResponse.data.user.isVerified) {
+        return toast.error(
+          "This candidate hasn't verified their account yet",
+        );
+      }
+
       const candidateId = userResponse.data.user._id;
 
       const payload = {
@@ -121,6 +127,16 @@ const Schedule = () => {
         toast.error(response.data.message);
       }
     } catch (error) {
+      if (error.response?.data?.notVerified) {
+        toast.error(
+          error.response?.data?.message ||
+            "Please verify your account from your profile page first",
+        );
+
+        navigate("/dashboard/profile");
+        return;
+      }
+
       if (error.response?.status === 403) {
         toast.error(
           error.response?.data?.message ||
