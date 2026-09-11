@@ -96,6 +96,23 @@ const schedule = async (req, res) => {
       });
     }
 
+    const candidateForCheck = await userModel.findById(candidate);
+
+    if (!candidateForCheck) {
+      return res.json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    if (!candidateForCheck.isVerified) {
+      return res.json({
+        success: false,
+        notVerified: true,
+        message: "This candidate hasn't verified their account yet",
+      });
+    }
+
     const inter = new interviewModel({
       title,
       candidate,
@@ -113,7 +130,7 @@ const schedule = async (req, res) => {
     currentUser.interviewsUsed += 1;
     await currentUser.save();
 
-    const candidateUser = await userModel.findById(candidate);
+    const candidateUser = candidateForCheck;
     const interviewerUser = await userModel.findById(interviewer);
 
     // Mail failures must NEVER fail this request - the interview is
@@ -121,7 +138,7 @@ const schedule = async (req, res) => {
     // network blip on the mail send used to bubble up into the outer
     // catch below and report "failed" to the interviewer even though
     // the interview had already been created.
-    // Don't await this - the response should return as soon as the
+    // Don't await these - the response should return as soon as the
     // interview is saved. Awaiting here means a slow/blocked SMTP
     // connection makes the whole request (and the interviewer's
     // browser) hang until it resolves or times out.
@@ -129,13 +146,28 @@ const schedule = async (req, res) => {
       candidateUser.email,
       candidateUser.name,
       title,
+      "Interviewer",
       interviewerUser.name,
       date,
       time,
       expectedDuration,
       language,
     ).catch((mailError) => {
-      console.log("Failed to send schedule mail:", mailError);
+      console.log("Failed to send schedule mail to candidate:", mailError);
+    });
+
+    sendInterviewScheduledMail(
+      interviewerUser.email,
+      interviewerUser.name,
+      title,
+      "Candidate",
+      candidateUser.name,
+      date,
+      time,
+      expectedDuration,
+      language,
+    ).catch((mailError) => {
+      console.log("Failed to send schedule mail to interviewer:", mailError);
     });
 
     return res.json({
