@@ -9,13 +9,14 @@ import {
   endInterview,
 } from "../controllers/interviewController.js";
 import userAuth from "../middleware/userAuth.js";
+import requireVerified from "../middleware/requireVerified.js";
 
 const interviewRouter = express.Router();
 
 interviewRouter.get("/", userAuth, getMyInterviews);
 interviewRouter.get("/completed", userAuth, getCompletedInterviews);
 interviewRouter.post("/cancel/:id", userAuth, cancelInterview);
-interviewRouter.post("/schedule", userAuth, schedule);
+interviewRouter.post("/schedule", userAuth, requireVerified, schedule);
 interviewRouter.get("/:id", userAuth, getSingleInterview);
 interviewRouter.post("/start/:id", userAuth, startInterview);
 interviewRouter.post("/end/:id", userAuth, endInterview);
