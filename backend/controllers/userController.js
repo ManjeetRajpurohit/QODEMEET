@@ -4,6 +4,7 @@ import validator from "validator";
 import jwt from "jsonwebtoken";
 import imagekit from "../config/imagekit.js";
 import sendOtpMail from "../utils/sendOtpMail.js";
+import sendWelcomeMail from "../utils/sendWelcomeMail.js";
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -11,22 +12,31 @@ const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
 const handleLogin = async (req, res) => {
-  const { email, password, role } = req.body;
+  const { username, password, role } = req.body;
 
   try {
-    if (!email || !password || !role) {
+    if (!username || !password || !role) {
       return res.json({
         success: false,
         message: "Incomplete details",
       });
     }
 
-    const user = await userModel.findOne({ email });
+    const user = await userModel.findOne({
+      username: username.toLowerCase().trim(),
+    });
 
     if (!user) {
       return res.json({
         success: false,
         message: "User not found",
+      });
+    }
+
+    if (!user.password) {
+      return res.json({
+        success: false,
+        message: "This account uses Google sign-in. Continue with Google instead.",
       });
     }
 
@@ -46,14 +56,9 @@ const handleLogin = async (req, res) => {
       });
     }
 
-    if (user.authProvider === "local" && !user.isVerified) {
-      return res.json({
-        success: false,
-        needsVerification: true,
-        message: "Please verify your email before logging in",
-      });
-    }
-
+    // Unverified users can still log in - they're just blocked from
+    // interview/subscription actions (see requireVerified middleware)
+    // until they verify from the profile page.
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "7d",
     });
@@ -72,14 +77,26 @@ const handleLogin = async (req, res) => {
   }
 };
 
+const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
+
 const handleRegister = async (req, res) => {
-  const { name, email, password, role, phoneNumber } = req.body;
+  const { name, username, email, password, role, phoneNumber } = req.body;
 
   try {
-    if (!name || !email || !password || !role) {
+    if (!name || !username || !email || !password || !role) {
       return res.json({
         success: false,
         message: "Incomplete details",
+      });
+    }
+
+    const cleanUsername = username.toLowerCase().trim();
+
+    if (!USERNAME_REGEX.test(cleanUsername)) {
+      return res.json({
+        success: false,
+        message:
+          "Username must be 3-20 characters: lowercase letters, numbers, underscores only",
       });
     }
 
@@ -97,9 +114,20 @@ const handleRegister = async (req, res) => {
       });
     }
 
-    const existingUser = await userModel.findOne({ email });
+    const usernameTaken = await userModel.findOne({
+      username: cleanUsername,
+    });
 
-    if (existingUser && existingUser.isVerified) {
+    if (usernameTaken) {
+      return res.json({
+        success: false,
+        message: "Username already taken",
+      });
+    }
+
+    const existingEmail = await userModel.findOne({ email });
+
+    if (existingEmail) {
       return res.json({
         success: false,
         message: "Email already registered",
@@ -108,55 +136,41 @@ const handleRegister = async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    const otp = generateOtp();
-    const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MS);
 
-    let user;
+    // Account is created unverified. Unlike the old flow, this does not
+    // block login or send an OTP right away - the user verifies later
+    // from their profile page (see sendVerificationOtp/verifyAccount
+    // below), and is blocked only from actions that need a confirmed
+    // email (scheduling, buying a subscription) until then.
+    const user = new userModel({
+      name,
+      username: cleanUsername,
+      email,
+      password: hashedPassword,
+      role,
+      phoneNumber,
+      authProvider: "local",
+      isVerified: false,
+    });
 
-    if (existingUser && !existingUser.isVerified) {
-      // Previous signup attempt never got verified — overwrite it
-      // with the new details and send a fresh code instead of
-      // blocking on a duplicate-email error.
-      existingUser.name = name;
-      existingUser.password = hashedPassword;
-      existingUser.role = role;
-      existingUser.phoneNumber = phoneNumber;
-      existingUser.otp = otp;
-      existingUser.otpExpiry = otpExpiry;
+    await user.save();
 
-      user = await existingUser.save();
-    } else {
-      user = new userModel({
-        name,
-        email,
-        password: hashedPassword,
-        role,
-        phoneNumber,
-        isVerified: false,
-        otp,
-        otpExpiry,
-      });
+    // Same pattern as the interview/billing mails below: the account
+    // is already created at this point, so a slow or failed welcome
+    // mail must never turn a successful signup into an error response.
+    sendWelcomeMail({ name: user.name, email: user.email }).catch(
+      (mailError) => {
+        console.log("Welcome mail failed:", mailError.message);
+      },
+    );
 
-      await user.save();
-    }
-
-    try {
-      await sendOtpMail({ name: user.name, email: user.email, otp });
-    } catch (mailError) {
-      console.log("OTP mail failed:", mailError.message);
-
-      return res.json({
-        success: false,
-        message:
-          "Couldn't send verification email. Please try registering again.",
-      });
-    }
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
     return res.json({
       success: true,
-      needsVerification: true,
-      email: user.email,
-      message: "Verification code sent to your email",
+      token,
     });
   } catch (error) {
     console.error("Register Error:", error.message);
@@ -168,18 +182,71 @@ const handleRegister = async (req, res) => {
   }
 };
 
-const verifyOtp = async (req, res) => {
-  const { email, otp } = req.body;
-
+// Both of these run behind userAuth, so they act on req.user (the
+// logged-in account) rather than trusting an email/otp pair in the
+// body - that's what the profile-page verification flow needs.
+const sendVerificationOtp = async (req, res) => {
   try {
-    if (!email || !otp) {
+    const user = await userModel.findById(req.user._id);
+
+    if (!user) {
       return res.json({
         success: false,
-        message: "Email and code are required",
+        message: "User not found",
       });
     }
 
-    const user = await userModel.findOne({ email });
+    if (user.isVerified) {
+      return res.json({
+        success: false,
+        message: "Account already verified",
+      });
+    }
+
+    const otp = generateOtp();
+
+    user.otp = otp;
+    user.otpExpiry = new Date(Date.now() + OTP_EXPIRY_MS);
+
+    await user.save();
+
+    try {
+      await sendOtpMail({ name: user.name, email: user.email, otp });
+    } catch (mailError) {
+      console.log("OTP mail failed:", mailError.message);
+
+      return res.json({
+        success: false,
+        message: "Couldn't send verification email. Please try again.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Verification code sent to your email",
+    });
+  } catch (error) {
+    console.error("Send Verification OTP Error:", error.message);
+
+    return res.json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const verifyAccount = async (req, res) => {
+  const { otp } = req.body;
+
+  try {
+    if (!otp) {
+      return res.json({
+        success: false,
+        message: "Enter the code sent to your email",
+      });
+    }
+
+    const user = await userModel.findById(req.user._id);
 
     if (!user) {
       return res.json({
@@ -215,66 +282,12 @@ const verifyOtp = async (req, res) => {
 
     await user.save();
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
     return res.json({
       success: true,
-      token,
+      message: "Account verified",
     });
   } catch (error) {
-    console.error("Verify OTP Error:", error.message);
-
-    return res.json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-const resendOtp = async (req, res) => {
-  const { email } = req.body;
-
-  try {
-    if (!email) {
-      return res.json({
-        success: false,
-        message: "Email is required",
-      });
-    }
-
-    const user = await userModel.findOne({ email });
-
-    if (!user) {
-      return res.json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (user.isVerified) {
-      return res.json({
-        success: false,
-        message: "Account already verified",
-      });
-    }
-
-    const otp = generateOtp();
-
-    user.otp = otp;
-    user.otpExpiry = new Date(Date.now() + OTP_EXPIRY_MS);
-
-    await user.save();
-
-    await sendOtpMail({ name: user.name, email: user.email, otp });
-
-    return res.json({
-      success: true,
-      message: "A new code has been sent to your email",
-    });
-  } catch (error) {
-    console.error("Resend OTP Error:", error.message);
+    console.error("Verify Account Error:", error.message);
 
     return res.json({
       success: false,
@@ -302,6 +315,7 @@ const updateuser = async (req, res) => {
 
     const {
       name,
+      username,
       role,
       phoneNumber,
       location,
@@ -328,6 +342,32 @@ const updateuser = async (req, res) => {
       education: education ? JSON.parse(education) : {},
       experience: experience ? JSON.parse(experience) : {},
     };
+
+    if (username) {
+      const cleanUsername = username.toLowerCase().trim();
+
+      if (!USERNAME_REGEX.test(cleanUsername)) {
+        return res.json({
+          success: false,
+          message:
+            "Username must be 3-20 characters: lowercase letters, numbers, underscores only",
+        });
+      }
+
+      const taken = await userModel.findOne({
+        username: cleanUsername,
+        _id: { $ne: userId },
+      });
+
+      if (taken) {
+        return res.json({
+          success: false,
+          message: "Username already taken",
+        });
+      }
+
+      updateData.username = cleanUsername;
+    }
 
     if (req.files?.avatar?.[0]) {
       const avatarUpload = await imagekit.upload({
@@ -442,8 +482,8 @@ const getSubscription = async (req, res) => {
 export {
   handleLogin,
   handleRegister,
-  verifyOtp,
-  resendOtp,
+  sendVerificationOtp,
+  verifyAccount,
   getCurrentUser,
   updateuser,
   getUserbyemail,
