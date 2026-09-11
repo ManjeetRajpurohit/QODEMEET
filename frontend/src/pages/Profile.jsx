@@ -1,18 +1,25 @@
 import React, { useContext, useState, useEffect } from "react";
-import { Upload, Plus, X, Save } from "lucide-react";
+import { Upload, Plus, X, Save, ShieldCheck, ShieldAlert } from "lucide-react";
 import { toast } from "react-toastify";
 import axios from "axios";
 import { AppContext } from "../context/Appcontext.jsx";
 
 const Profile = () => {
-  const { token } = useContext(AppContext);
+  const { token, setUser } = useContext(AppContext);
 
   const [skillInput, setSkillInput] = useState("");
   const [avatarFile, setAvatarFile] = useState(null);
   const [resumeFile, setResumeFile] = useState(null);
 
+  const [isVerified, setIsVerified] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+
   const [profile, setProfile] = useState({
     name: "",
+    username: "",
     role: "",
     email: "",
     phoneNumber: "",
@@ -125,6 +132,7 @@ const Profile = () => {
       }
 
       formData.append("name", profile.name);
+      formData.append("username", profile.username);
       formData.append("role", profile.role);
       formData.append("phoneNumber", profile.phoneNumber);
       formData.append("location", profile.location);
@@ -172,8 +180,11 @@ const Profile = () => {
       if (response.data.success) {
         const user = response.data.user;
 
+        setIsVerified(!!user.isVerified);
+
         setProfile({
           name: user.name || "",
+          username: user.username || "",
           role: user.role || "",
           email: user.email || "",
           phoneNumber: user.phoneNumber || "",
@@ -205,6 +216,62 @@ const Profile = () => {
       }
     } catch (error) {
       toast.error(error.message);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setSendingOtp(true);
+
+    try {
+      const response = await axios.post(
+        import.meta.env.VITE_BACKEND_URL + "/api/user/send-verification",
+        {},
+        { headers: { token } },
+      );
+
+      if (response.data.success) {
+        toast.success(response.data.message || "Code sent to your email");
+        setOtpSent(true);
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message);
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otp) {
+      toast.error("Enter the code sent to your email");
+      return;
+    }
+
+    setVerifying(true);
+
+    try {
+      const response = await axios.post(
+        import.meta.env.VITE_BACKEND_URL + "/api/user/verify-account",
+        { otp },
+        { headers: { token } },
+      );
+
+      if (response.data.success) {
+        toast.success("Account verified");
+        setIsVerified(true);
+        setOtpSent(false);
+        setOtp("");
+        if (setUser) {
+          setUser((prev) => (prev ? { ...prev, isVerified: true } : prev));
+        }
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message);
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -277,6 +344,15 @@ const Profile = () => {
               />
 
               <input
+                type="text"
+                name="username"
+                value={profile.username}
+                onChange={handleChange}
+                placeholder="Username"
+                className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white"
+              />
+
+              <input
                 type="email"
                 name="email"
                 value={profile.email}
@@ -313,6 +389,71 @@ const Profile = () => {
                 className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white"
               />
             </div>
+          </div>
+          {/* Account Verification */}
+
+          <div className="bg-[#0B1220] border border-white/10 rounded-2xl p-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                {isVerified ? (
+                  <ShieldCheck size={22} className="text-green-400" />
+                ) : (
+                  <ShieldAlert size={22} className="text-yellow-400" />
+                )}
+
+                <div>
+                  <h2 className="text-white font-semibold">
+                    {isVerified ? "Account Verified" : "Account Not Verified"}
+                  </h2>
+
+                  <p className="text-gray-400 text-sm">
+                    {isVerified
+                      ? "You can schedule interviews and buy a subscription."
+                      : "Verify your email to schedule interviews or buy a subscription."}
+                  </p>
+                </div>
+              </div>
+
+              {!isVerified && !otpSent && (
+                <button
+                  onClick={handleSendOtp}
+                  disabled={sendingOtp}
+                  className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium transition disabled:opacity-50"
+                >
+                  {sendingOtp ? "Sending..." : "Send Verification Code"}
+                </button>
+              )}
+            </div>
+
+            {!isVerified && otpSent && (
+              <div className="flex flex-wrap items-center gap-3 mt-5">
+                <input
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="6-digit code"
+                  className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white tracking-[0.3em]"
+                />
+
+                <button
+                  onClick={handleVerifyOtp}
+                  disabled={verifying}
+                  className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium transition disabled:opacity-50"
+                >
+                  {verifying ? "Verifying..." : "Verify"}
+                </button>
+
+                <button
+                  onClick={handleSendOtp}
+                  disabled={sendingOtp}
+                  className="text-gray-400 hover:text-white text-sm disabled:opacity-50"
+                >
+                  {sendingOtp ? "Sending..." : "Resend code"}
+                </button>
+              </div>
+            )}
           </div>
           {/* Skills */}
 
