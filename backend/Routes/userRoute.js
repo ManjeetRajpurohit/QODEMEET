@@ -2,8 +2,8 @@ import express from "express";
 import {
   handleLogin,
   handleRegister,
-  verifyOtp,
-  resendOtp,
+  sendVerificationOtp,
+  verifyAccount,
   getCurrentUser,
   updateuser,
   getUserbyemail,
@@ -19,9 +19,10 @@ userRouter.post("/login", handleLogin);
 
 userRouter.post("/register", handleRegister);
 
-userRouter.post("/verify-otp", verifyOtp);
-
-userRouter.post("/resend-otp", resendOtp);
+// Verification now happens from the profile page, once the user is
+// already logged in - both routes act on the authenticated account.
+userRouter.post("/send-verification", userAuth, sendVerificationOtp);
+userRouter.post("/verify-account", userAuth, verifyAccount);
 
 userRouter.get("/me", userAuth, getCurrentUser);
 userRouter.get("/get-email", getUserbyemail);
