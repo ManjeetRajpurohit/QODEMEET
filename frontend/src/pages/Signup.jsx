@@ -8,52 +8,28 @@ import { AppContext } from "../context/Appcontext";
 import { toast } from "react-toastify";
 
 const Signup = () => {
-  const [step, setStep] = useState("form"); // "form" | "otp"
   const [role, setRole] = useState("candidate");
   const [email, setemail] = useState('');
+  const [username, setusername] = useState('');
   const [password, setpassword] = useState('');
   const [phoneNumber, setphoneNumber] = useState('');
   const [name, setname] = useState('');
-  const [otp, setOtp] = useState('');
-  const [verifying, setVerifying] = useState(false);
-  const [resending, setResending] = useState(false);
-  const { backendUrl, navigate } = useContext(AppContext);
+  const [submitting, setSubmitting] = useState(false);
+  const { backendUrl, navigate, setToken } = useContext(AppContext);
 
   const handleonSubmit = async (e) => {
     e.preventDefault();
-    if (!name || !email || !password || !phoneNumber) {
+    if (!name || !username || !email || !password || !phoneNumber) {
       toast.error("incomplete details");
       return;
     }
+    setSubmitting(true);
     try {
-      const response = await axios.post(backendUrl + '/api/user/register', { name, email, password, role, phoneNumber });
-      if (response.data.success) {
-        toast.success(response.data.message || "Verification code sent");
-        setStep("otp");
-      } else {
-        toast.error(response.data.message);
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.message || error.message);
-    }
-  };
-
-  const handleVerify = async (e) => {
-    e.preventDefault();
-
-    if (!otp) {
-      toast.error("Enter the code sent to your email");
-      return;
-    }
-
-    setVerifying(true);
-
-    try {
-      const response = await axios.post(backendUrl + '/api/user/verify-otp', { email, otp });
-
+      const response = await axios.post(backendUrl + '/api/user/register', { name, username, email, password, role, phoneNumber });
       if (response.data.success) {
         localStorage.setItem("token", response.data.token);
-        toast.success("Account verified");
+        setToken(response.data.token);
+        toast.success("Account created");
         navigate('/dashboard');
       } else {
         toast.error(response.data.message);
@@ -61,25 +37,7 @@ const Signup = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || error.message);
     } finally {
-      setVerifying(false);
-    }
-  };
-
-  const handleResend = async () => {
-    setResending(true);
-
-    try {
-      const response = await axios.post(backendUrl + '/api/user/resend-otp', { email });
-
-      if (response.data.success) {
-        toast.success("New code sent");
-      } else {
-        toast.error(response.data.message);
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.message || error.message);
-    } finally {
-      setResending(false);
+      setSubmitting(false);
     }
   };
 
@@ -106,214 +64,179 @@ const Signup = () => {
         {/* Card */}
         <div className="bg-white/5 border border-white/10 backdrop-blur-lg rounded-3xl p-10 shadow-2xl">
 
-          {step === "otp" ? (
-            <>
-              <div className="mb-8">
-                <h2 className="text-4xl font-bold text-white mb-2">
-                  Verify your email
-                </h2>
+          {/* Header */}
+          <div className="mb-8">
+            <h2 className="text-4xl font-bold text-white mb-2">
+              Create your account
+            </h2>
 
-                <p className="text-gray-400">
-                  We sent a 6-digit code to <span className="text-white">{email}</span>. Enter it below to activate your account.
-                </p>
-              </div>
+            <p className="text-gray-400">
+              Create your InterviewPro account and get started. You can verify
+              your email later from your profile.
+            </p>
+          </div>
 
-              <form onSubmit={handleVerify} className="space-y-5">
-                <input
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="Enter 6-digit code"
-                  className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[0.5em] outline-none focus:border-purple-500"
-                />
+          <form onSubmit={handleonSubmit} className="space-y-5">
 
-                <button
-                  type="submit"
-                  disabled={verifying}
-                  className="w-full py-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold text-lg hover:opacity-90 transition disabled:opacity-50"
-                >
-                  {verifying ? "Verifying..." : "Verify & Continue"}
-                </button>
+            {/* Name + Phone */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                onChange={(e) => setname(e.target.value)}
+                type="text"
+                placeholder="Full Name"
+                className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
+              />
+
+              <input
+                onChange={(e) => setphoneNumber(e.target.value)}
+                type="tel"
+                placeholder="Phone Number"
+                className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {/* Username */}
+            <input
+              onChange={(e) => setusername(e.target.value)}
+              type="text"
+              placeholder="Username (lowercase, letters/numbers/underscore)"
+              className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
+            />
+
+            {/* Email */}
+            <input
+              onChange={(e) => setemail(e.target.value)}
+              type="email"
+              placeholder="Email Address"
+              className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
+            />
+
+            {/* Password */}
+            <input
+              onChange={(e) => setpassword(e.target.value)}
+              type="password"
+              placeholder="Create Password"
+              className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
+            />
+
+            {/* Role Selection */}
+            <div>
+              <p className="text-gray-300 mb-3">
+                I am a...
+              </p>
+
+              <div className="space-y-3">
+
+                {/* Candidate */}
 
                 <button
                   type="button"
-                  onClick={handleResend}
-                  disabled={resending}
-                  className="w-full text-center text-gray-400 hover:text-white text-sm disabled:opacity-50"
+                  onClick={() =>
+                    setRole("candidate")
+                  }
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition ${
+                    role === "candidate"
+                      ? "border-purple-500 bg-purple-500/20"
+                      : "border-gray-700 hover:border-purple-500"
+                  }`}
                 >
-                  {resending ? "Sending..." : "Didn't get a code? Resend"}
-                </button>
-              </form>
-            </>
-          ) : (
-            <>
-              {/* Header */}
-              <div className="mb-8">
-                <h2 className="text-4xl font-bold text-white mb-2">
-                  Create your account
-                </h2>
-
-                <p className="text-gray-400">
-                  Create your InterviewPro account and get started.
-                </p>
-              </div>
-
-              <form onSubmit={handleonSubmit} className="space-y-5">
-
-                {/* Name + Phone */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input
-                    onChange={(e) => setname(e.target.value)}
-                    type="text"
-                    placeholder="Full Name"
-                    className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
-                  />
-
-                  <input
-                    onChange={(e) => setphoneNumber(e.target.value)}
-                    type="tel"
-                    placeholder="Phone Number"
-                    className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
-                  />
-                </div>
-
-                {/* Email */}
-                <input
-                  onChange={(e) => setemail(e.target.value)}
-                  type="email"
-                  placeholder="Email Address"
-                  className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
-                />
-
-                {/* Password */}
-                <input
-                  onChange={(e) => setpassword(e.target.value)}
-                  type="password"
-                  placeholder="Create Password"
-                  className="w-full bg-[#0F172A] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500"
-                />
-
-                {/* Role Selection */}
-                <div>
-                  <p className="text-gray-300 mb-3">
-                    I am a...
-                  </p>
-
-                  <div className="space-y-3">
-
-                    {/* Candidate */}
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setRole("candidate")
-                      }
-                      className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition ${
-                        role === "candidate"
-                          ? "border-purple-500 bg-purple-500/20"
-                          : "border-gray-700 hover:border-purple-500"
-                      }`}
-                    >
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
-                        <User size={22} className="text-white" />
-                      </div>
-
-                      <div className="text-left">
-                        <h3 className="text-white font-semibold">
-                          Candidate
-                        </h3>
-
-                        <p className="text-gray-400 text-sm">
-                          Take coding interviews and track progress.
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Interviewer */}
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setRole("interviewer")
-                      }
-                      className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition ${
-                        role === "interviewer"
-                          ? "border-purple-500 bg-purple-500/20"
-                          : "border-gray-700 hover:border-purple-500"
-                      }`}
-                    >
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
-                        <Briefcase size={22} className="text-white" />
-                      </div>
-
-                      <div className="text-left">
-                        <h3 className="text-white font-semibold">
-                          Interviewer
-                        </h3>
-
-                        <p className="text-gray-400 text-sm">
-                          Schedule interviews and evaluate candidates.
-                        </p>
-                      </div>
-                    </button>
-
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
+                    <User size={22} className="text-white" />
                   </div>
-                </div>
 
-                {/* Google Signup */}
+                  <div className="text-left">
+                    <h3 className="text-white font-semibold">
+                      Candidate
+                    </h3>
+
+                    <p className="text-gray-400 text-sm">
+                      Take coding interviews and track progress.
+                    </p>
+                  </div>
+                </button>
+
+                {/* Interviewer */}
 
                 <button
-                  onClick={() => window.open(import.meta.env.VITE_BACKEND_URL + '/api/auth/google', "_self")}
                   type="button"
-                  className="w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-gray-700 text-white hover:border-purple-500 transition"
+                  onClick={() =>
+                    setRole("interviewer")
+                  }
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition ${
+                    role === "interviewer"
+                      ? "border-purple-500 bg-purple-500/20"
+                      : "border-gray-700 hover:border-purple-500"
+                  }`}
                 >
-                  <img
-                    src="https://www.svgrepo.com/show/475656/google-color.svg"
-                    alt="Google"
-                    className="w-5 h-5"
-                  />
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center">
+                    <Briefcase size={22} className="text-white" />
+                  </div>
 
-                  Continue with Google
+                  <div className="text-left">
+                    <h3 className="text-white font-semibold">
+                      Interviewer
+                    </h3>
+
+                    <p className="text-gray-400 text-sm">
+                      Schedule interviews and evaluate candidates.
+                    </p>
+                  </div>
                 </button>
 
-                {/* Divider */}
+              </div>
+            </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="h-px flex-1 bg-gray-700"></div>
+            {/* Google Signup */}
 
-                  <span className="text-gray-500 text-sm">
-                    OR
-                  </span>
+            <button
+              onClick={() => window.open(import.meta.env.VITE_BACKEND_URL + '/api/auth/google', "_self")}
+              type="button"
+              className="w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-gray-700 text-white hover:border-purple-500 transition"
+            >
+              <img
+                src="https://www.svgrepo.com/show/475656/google-color.svg"
+                alt="Google"
+                className="w-5 h-5"
+              />
 
-                  <div className="h-px flex-1 bg-gray-700"></div>
-                </div>
+              Continue with Google
+            </button>
 
-                {/* Create Account */}
+            {/* Divider */}
 
-                <button
-                  type="submit"
-                  className="w-full py-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold text-lg hover:opacity-90 transition"
-                >
-                  Create Account
-                </button>
+            <div className="flex items-center gap-4">
+              <div className="h-px flex-1 bg-gray-700"></div>
 
-                {/* Login Link */}
+              <span className="text-gray-500 text-sm">
+                OR
+              </span>
 
-                <p className="text-center text-gray-400">
-                  Already have an account?{" "}
-                  <NavLink
-                    to="/login"
-                    className="text-white font-semibold hover:text-purple-400"
-                  >
-                    Log in
-                  </NavLink>
-                </p>
+              <div className="h-px flex-1 bg-gray-700"></div>
+            </div>
 
-              </form>
-            </>
-          )}
+            {/* Create Account */}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold text-lg hover:opacity-90 transition disabled:opacity-50"
+            >
+              {submitting ? "Creating..." : "Create Account"}
+            </button>
+
+            {/* Login Link */}
+
+            <p className="text-center text-gray-400">
+              Already have an account?{" "}
+              <NavLink
+                to="/login"
+                className="text-white font-semibold hover:text-purple-400"
+              >
+                Log in
+              </NavLink>
+            </p>
+
+          </form>
         </div>
       </div>
     </div>
