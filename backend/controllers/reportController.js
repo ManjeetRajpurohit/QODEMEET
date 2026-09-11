@@ -1,5 +1,7 @@
 import reportModel from "../models/reportModel.js";
 import interviewModel from "../models/interviewModel.js";
+import userModel from "../models/userModel.js";
+import sendReportMail from "../utils/sendReportMail.js";
 
 const listAllReports = async (req, res) => {
   try {
@@ -75,6 +77,25 @@ const AddReport = async (req, res) => {
           reportGenerated: true,
         }
       );
+    }
+
+    // A plain findById here (rather than report.populate()) is
+    // deliberate: .populate() mutates the document in place, which
+    // would silently turn "candidate" in the response below from an
+    // id into an object and break any future caller expecting the
+    // original shape.
+    const candidateUser = await userModel.findById(report.candidate);
+
+    if (candidateUser?.email) {
+      sendReportMail(
+        candidateUser.email,
+        candidateUser.name,
+        report.title,
+        report.overallScore,
+        report._id,
+      ).catch((mailError) => {
+        console.log("Failed to send report mail:", mailError);
+      });
     }
 
     return res.json({
