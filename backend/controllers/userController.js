@@ -90,6 +90,13 @@ const handleRegister = async (req, res) => {
       });
     }
 
+    if (role !== "candidate" && role !== "interviewer") {
+      return res.json({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
     const cleanUsername = username.toLowerCase().trim();
 
     if (!USERNAME_REGEX.test(cleanUsername)) {
@@ -137,11 +144,9 @@ const handleRegister = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Account is created unverified. Unlike the old flow, this does not
-    // block login or send an OTP right away - the user verifies later
-    // from their profile page (see sendVerificationOtp/verifyAccount
-    // below), and is blocked only from actions that need a confirmed
-    // email (scheduling, buying a subscription) until then.
+    // Role is set here, once, and is never editable again after this -
+    // see selectRole/updateuser below, neither of which will touch an
+    // account that already has a role.
     const user = new userModel({
       name,
       username: cleanUsername,
@@ -174,6 +179,55 @@ const handleRegister = async (req, res) => {
     });
   } catch (error) {
     console.error("Register Error:", error.message);
+
+    return res.json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// One-time-only: the only place a user's role can ever be set after
+// account creation (used by the post-Google-OAuth "select your role"
+// screen). Hard-rejects if the account already has a role - there is
+// no edit path once this succeeds once.
+const selectRole = async (req, res) => {
+  const { role } = req.body;
+
+  try {
+    if (role !== "candidate" && role !== "interviewer") {
+      return res.json({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
+    const user = await userModel.findById(req.user._id);
+
+    if (!user) {
+      return res.json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.role) {
+      return res.json({
+        success: false,
+        message: "Role already set and cannot be changed",
+      });
+    }
+
+    user.role = role;
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Select Role Error:", error.message);
 
     return res.json({
       success: false,
@@ -313,10 +367,13 @@ const updateuser = async (req, res) => {
   try {
     const userId = req.user._id;
 
+    // NOTE: role is intentionally not accepted here. It is set exactly
+    // once - at signup for local accounts, or via selectRole for
+    // Google accounts - and is never editable through this endpoint
+    // or anywhere else, by design.
     const {
       name,
       username,
-      role,
       phoneNumber,
       location,
       skills,
@@ -325,16 +382,8 @@ const updateuser = async (req, res) => {
       experience,
     } = req.body;
 
-    if (role && role !== "candidate" && role !== "interviewer") {
-      return res.json({
-        success: false,
-        message: "Invalid role",
-      });
-    }
-
     let updateData = {
       name,
-      role,
       phoneNumber,
       location,
       skills: skills ? JSON.parse(skills) : [],
@@ -482,6 +531,7 @@ const getSubscription = async (req, res) => {
 export {
   handleLogin,
   handleRegister,
+  selectRole,
   sendVerificationOtp,
   verifyAccount,
   getCurrentUser,
