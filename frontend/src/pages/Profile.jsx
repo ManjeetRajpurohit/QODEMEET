@@ -514,13 +514,13 @@ const Profile = () => {
                 <p className="text-green-400 mt-3">{resumeFile.name}</p>
               ) : profile.resume ? (
                 
-                  href={profile.resume}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-violet-400 mt-3 block"
+                <button
+                  type="button"
+                  onClick={() => window.open(profile.resume, "_blank", "noreferrer")}
+                  className="text-violet-400 mt-3 block text-left"
                 >
                   Current Resume
-                </a>
+                </button>
               ) : null}
             </div>
           </div>
