@@ -131,9 +131,11 @@ const Profile = () => {
         formData.append("resume", resumeFile);
       }
 
+      // role is deliberately not sent - it's locked forever after
+      // signup / the select-role screen, and the backend no longer
+      // accepts it on this endpoint at all.
       formData.append("name", profile.name);
       formData.append("username", profile.username);
-      formData.append("role", profile.role);
       formData.append("phoneNumber", profile.phoneNumber);
       formData.append("location", profile.location);
 
@@ -309,7 +311,7 @@ const Profile = () => {
                 {profile.name}
               </h2>
 
-              <p className="text-gray-400">{profile.role}</p>
+              <p className="text-gray-400 capitalize">{profile.role}</p>
 
               <label className="mt-5 cursor-pointer flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 text-white hover:bg-white/5 transition">
                 <Upload size={16} />
@@ -361,15 +363,13 @@ const Profile = () => {
                 className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white opacity-70 cursor-not-allowed"
               />
 
-              <select
-                name="role"
-                value={profile.role}
-                onChange={handleChange}
-                className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white"
-              >
-                <option value="candidate">Candidate</option>
-                <option value="interviewer">Interviewer</option>
-              </select>
+              <input
+                type="text"
+                value={profile.role ? profile.role[0].toUpperCase() + profile.role.slice(1) : ""}
+                disabled
+                title="Your role is set once and can't be changed"
+                className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white opacity-70 cursor-not-allowed capitalize"
+              />
 
               <input
                 type="text"
@@ -514,7 +514,7 @@ const Profile = () => {
                 <p className="text-green-400 mt-3">{resumeFile.name}</p>
               ) : (
                 profile.resume && (
-                  <a
+                  
                     href={profile.resume}
                     target="_blank"
                     rel="noreferrer"
