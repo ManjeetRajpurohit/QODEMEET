@@ -2,6 +2,7 @@ import express from "express";
 import {
   handleLogin,
   handleRegister,
+  selectRole,
   sendVerificationOtp,
   verifyAccount,
   getCurrentUser,
@@ -18,6 +19,8 @@ const userRouter = express.Router();
 userRouter.post("/login", handleLogin);
 
 userRouter.post("/register", handleRegister);
+
+userRouter.post("/select-role", userAuth, selectRole);
 
 // Verification now happens from the profile page, once the user is
 // already logged in - both routes act on the authenticated account.
