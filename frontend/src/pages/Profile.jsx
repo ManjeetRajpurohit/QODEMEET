@@ -509,7 +509,6 @@ const Profile = () => {
                 onChange={handleResumeUpload}
                 className="text-white"
               />
-
               {resumeFile ? (
                 <p className="text-green-400 mt-3">{resumeFile.name}</p>
               ) : (
