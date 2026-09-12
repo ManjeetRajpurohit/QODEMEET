@@ -365,10 +365,10 @@ const Profile = () => {
 
               <input
                 type="text"
-                value={profile.role ? profile.role[0].toUpperCase() + profile.role.slice(1) : ""}
+                value={profile.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : ""}
                 disabled
                 title="Your role is set once and can't be changed"
-                className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white opacity-70 cursor-not-allowed capitalize"
+                className="bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-white opacity-70 cursor-not-allowed"
               />
 
               <input
@@ -509,20 +509,19 @@ const Profile = () => {
                 onChange={handleResumeUpload}
                 className="text-white"
               />
+
               {resumeFile ? (
                 <p className="text-green-400 mt-3">{resumeFile.name}</p>
-              ) : (
-                profile.resume && (
-                  
-                    href={profile.resume}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-violet-400 mt-3 block"
-                  >
-                    Current Resume
-                  </a>
-                )
-              )}
+              ) : profile.resume ? (
+                
+                  href={profile.resume}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-violet-400 mt-3 block"
+                >
+                  Current Resume
+                </a>
+              ) : null}
             </div>
           </div>
 
