@@ -62,10 +62,14 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Set once, either at local signup (form) or via the post-Google
+    // role-select screen, and never changed again after that (see
+    // selectRole in userController.js — it hard-rejects if this is
+    // already non-null). null here means "hasn't picked yet."
     role: {
       type: String,
       enum: ["candidate", "interviewer", "admin"],
-      default: "candidate",
+      default: null,
     },
 
     phoneNumber: {
