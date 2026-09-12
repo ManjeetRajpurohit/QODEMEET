@@ -13,7 +13,20 @@ const Authsuccess = () => {
     if (token) {
       localStorage.setItem("token", token);
       setToken(token);
-      navigate("/dashboard");
+
+      // The JWT payload carries the user's role (set at Google account
+      // creation). Decode it here so we can send brand-new users to
+      // /select-role instead of dumping them straight into /dashboard,
+      // which has no way of knowing a role hasn't been picked yet.
+      try {
+        const base64Url = token.split(".")[1];
+        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+        const payload = JSON.parse(atob(base64));
+
+        navigate(payload.role ? "/dashboard" : "/select-role");
+      } catch (error) {
+        navigate("/dashboard");
+      }
     } else {
       navigate("/login");
     }
