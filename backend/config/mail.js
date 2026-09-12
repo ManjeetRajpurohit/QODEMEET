@@ -1,67 +1,43 @@
-import nodemailer from "nodemailer";
-import dns from "dns";
+// Render blocks/can't route outbound SMTP (port 465/587) reliably from
+// its network. Prod logs show the DNS-order + family:4 fix DID stop the
+// IPv6 misrouting (ENETUNREACH went away), but connecting to the
+// correct IPv4 address for smtp.gmail.com now just times out instead -
+// that's a network-level block, not fixable from the SMTP client side.
+// Sending over Resend's HTTPS API (port 443) sidesteps the problem
+// entirely.
+//
+// Setup needed on your end:
+//   1. Sign up at https://resend.com (free tier covers this easily).
+//   2. Create an API key, set RESEND_API_KEY in Render's env vars.
+//   3. Set EMAIL_FROM in Render's env vars - either "onboarding@resend.dev"
+//      (works immediately, but until you verify your own domain with
+//      Resend it can only deliver to the email address you signed up
+//      with) or an address on a domain you've verified with Resend.
 
-const dnsPromises = dns.promises;
+const RESEND_API_URL = "https://api.resend.com/emails";
 
-const resolveSmtpHost = async () => {
-  try {
-    const addresses = await dnsPromises.resolve4("smtp.gmail.com");
-    return addresses[0];
-  } catch (error) {
-    console.error(
-      "Failed to resolve smtp.gmail.com A record, falling back to hostname:",
-      error.message,
-    );
-    return "smtp.gmail.com";
-  }
-};
-
-// Render's outbound network doesn't reliably route IPv6. Neither
-// dns.setDefaultResultOrder("ipv4first") nor nodemailer's `family: 4`
-// option stopped connections from picking Gmail's AAAA record (see
-// "ENETUNREACH 2607:..." in prod logs). Resolving the A record
-// ourselves and connecting to that literal IPv4 address removes IPv6
-// from the picture entirely. `tls.servername` keeps SNI/cert
-// validation pointed at the real hostname despite connecting by IP.
-const buildTransporter = async () => {
-  const host = await resolveSmtpHost();
-
-  return nodemailer.createTransport({
-    host,
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: {
-      servername: "smtp.gmail.com",
-    },
-  });
-};
-
-// Verify once at boot so startup logs still tell you quickly if
-// creds/network are broken.
-buildTransporter()
-  .then((t) =>
-    t.verify((err) => {
-      if (err) {
-        console.error("SMTP connection failed:", err.message);
-      } else {
-        console.log("SMTP server is ready to send emails");
-      }
-    }),
-  )
-  .catch((err) => console.error("SMTP setup failed:", err.message));
-
-// sendOtpMail.js / sendWelcomeMail.js / etc. import this and call
-// .sendMail(...) directly - keep that exact shape, but resolve a
-// fresh transporter (and fresh IPv4 address) per send so we're never
-// stuck on a stale/rotated Gmail IP.
 const transporter = {
-  sendMail: async (options) => {
-    const realTransporter = await buildTransporter();
-    return realTransporter.sendMail(options);
+  sendMail: async ({ to, subject, html }) => {
+    const response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `QodeMeet <${process.env.EMAIL_FROM}>`,
+        to,
+        subject,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Resend API error (${response.status}): ${errorBody}`);
+    }
+
+    return response.json();
   },
 };
 
