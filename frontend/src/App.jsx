@@ -22,6 +22,7 @@ import AddQuestions from "./pages/AddQuestions.jsx";
 import Authsuccess from "./pages/Authsuccess.jsx";
 import AddReport from "./pages/AddReport.jsx";
 import Bill from "./pages/Bill.jsx";
+import SelectRole from "./pages/SelectRole.jsx";
 const App = () => {
   return (
     <div>
@@ -32,6 +33,7 @@ const App = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/auth-success" element={<Authsuccess />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/select-role" element={<SelectRole />} />
 
         <Route element={<DashboardLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
