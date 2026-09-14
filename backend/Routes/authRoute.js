@@ -2,6 +2,7 @@ import express from "express";
 import passport from "passport";
 import jwt from "jsonwebtoken";
 import userAuth from "../middleware/userAuth.js";
+import sendWelcomeMail from "../utils/sendWelcomeMail.js";
 
 const googleRouter = express.Router();
 
@@ -31,6 +32,17 @@ googleRouter.get(
           expiresIn: "7d",
         }
       );
+
+      // Account is already created at this point, so a slow or failed
+      // welcome mail must never block the redirect - same pattern as
+      // the local signup flow.
+      if (req.user.isNewUser) {
+        sendWelcomeMail({ name: req.user.name, email: req.user.email }).catch(
+          (mailError) => {
+            console.log("Welcome mail failed:", mailError.message);
+          }
+        );
+      }
 
       res.redirect(
   `${process.env.FRONTEND_URL}/auth-success?token=${token}`
