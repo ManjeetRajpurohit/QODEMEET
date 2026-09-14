@@ -257,7 +257,7 @@ const AddReport = () => {
                 </div>
 
                 {formData.technicalSkills.map((skill, index) => (
-                  <div key={index} className="grid grid-cols-2 gap-4 mb-4">
+                  <div key={index} className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                     <input
                       type="text"
                       placeholder="Skill Name"
