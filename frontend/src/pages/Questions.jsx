@@ -190,7 +190,8 @@ const Questions = () => {
 
       {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="border-b border-white/10 bg-white/5">
             <tr>
               <th className="px-6 py-4 text-left">Title</th>
@@ -241,6 +242,7 @@ const Questions = () => {
             ))}
           </tbody>
         </table>
+        </div>
 
         {filteredQuestions.length === 0 && (
           <div className="py-16 text-center">
