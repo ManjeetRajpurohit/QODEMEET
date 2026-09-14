@@ -44,6 +44,8 @@ passport.use(
           googleId: profile.id,
         });
 
+        let isNewUser = false;
+
         if (!user) {
           const email = profile.emails?.[0]?.value;
           const username = await generateUsernameFromEmail(email);
@@ -58,7 +60,15 @@ passport.use(
             isVerified: true,
             role: null,
           });
+
+          isNewUser = true;
         }
+
+        // Not a schema field - just riding along on the user object so
+        // the /google/callback route can tell new signups from repeat
+        // logins without a second DB query.
+        user = user.toObject ? user.toObject() : user;
+        user.isNewUser = isNewUser;
 
         return cb(null, user);
       } catch (error) {
