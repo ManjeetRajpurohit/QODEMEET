@@ -40,23 +40,29 @@ const VideoSection = ({
     isScreenSharing,
   ]);
   return (
-    <div className="h-full flex flex-col gap-3 p-3 bg-[#020617]">
-      <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220] relative">
+    <div className="h-full w-full relative bg-[#020617] p-1.5 sm:p-3">
+      {/* Remote video fills the whole container - works at any height,
+          from the 96px mobile strip up to the 320px desktop column */}
+      <div className="absolute inset-1.5 sm:inset-3 rounded-lg sm:rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220]">
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
           className="w-full h-full object-cover"
         />
-        <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
-          <Video size={12} />
-          Remote Participant
+        <div className="absolute top-1.5 left-1.5 sm:top-3 sm:left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[9px] sm:text-xs text-white">
+          <Video size={12} className="hidden sm:block" />
+          <span className="hidden sm:inline">Remote Participant</span>
+          <span className="sm:hidden">Remote</span>
         </div>
-        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
+        <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-black/60 backdrop-blur-md px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[9px] sm:text-xs text-white">
           Live
         </div>
       </div>
-      <div className="h-44 rounded-2xl overflow-hidden border border-white/10 bg-[#0B1220] relative flex-shrink-0">
+
+      {/* Local video - small PIP thumbnail, scales with the container
+          instead of a fixed height, so it never overflows a short strip */}
+      <div className="absolute bottom-2.5 right-2.5 sm:bottom-5 sm:right-5 w-1/3 max-w-[64px] sm:max-w-[140px] aspect-video rounded-md sm:rounded-xl overflow-hidden border border-white/20 shadow-lg bg-[#0B1220]">
         <video
           ref={localVideoRef}
           autoPlay
@@ -64,24 +70,18 @@ const VideoSection = ({
           playsInline
           className="w-full h-full object-cover"
         />
-        <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
+        <div className="absolute top-0.5 left-0.5 sm:top-2 sm:left-2 flex items-center gap-1 bg-black/60 backdrop-blur-md px-1 py-0.5 sm:px-2 sm:py-1 rounded-full text-white">
           {isScreenSharing ? (
-            <>
-              <Monitor size={12} />
-              Sharing Screen
-            </>
+            <Monitor size={9} className="sm:hidden" />
           ) : (
-            <>
-              <Video size={12} />
-              You
-            </>
+            <Video size={9} className="sm:hidden" />
+          )}
+          {isScreenSharing ? (
+            <Monitor size={12} className="hidden sm:block" />
+          ) : (
+            <Video size={12} className="hidden sm:block" />
           )}
         </div>
-        {!isScreenSharing && (
-          <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
-            Local
-          </div>
-        )}
       </div>
     </div>
   );
