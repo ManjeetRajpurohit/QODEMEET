@@ -1,12 +1,10 @@
-import dns from "node:dns";
 import nodemailer from "nodemailer";
-
-dns.setDefaultResultOrder("ipv4first");
 
 const gmailTransport = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
   secure: true,
+  family: 4,
   auth: {
     user: process.env.EMAIL_FROM,
     pass: process.env.EMAIL_APP_PASSWORD,
