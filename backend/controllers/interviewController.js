@@ -375,28 +375,36 @@ const startInterview = async (req, res) => {
     const { id } = req.params;
 
     const interview = await interviewModel
-      .findById(id)
+      .findOneAndUpdate(
+        {
+          _id: id,
+          interviewer: req.user._id,
+          status: "scheduled",
+        },
+        {
+          $set: {
+            status: "started",
+            startedAt: new Date(),
+          },
+        },
+        { new: true }
+      )
       .populate("candidate", "name email");
 
     if (!interview) {
-      return res.json({
+      return res.status(404).json({
         success: false,
-        message: "Interview not found",
+        message: "Interview not found or unauthorized",
       });
     }
-
-    interview.status = "started";
-    interview.startedAt = new Date();
-
-    await interview.save();
 
     sendInterviewStartedMail(
       interview.candidate.email,
       interview.candidate.name,
       interview.title,
-      interview._id,
-    ).catch((mailError) => {
-      console.log("Failed to send interview-started mail:", mailError);
+      interview._id
+    ).catch((error) => {
+      console.error("Interview start email failed:", error);
     });
 
     return res.json({
@@ -405,11 +413,11 @@ const startInterview = async (req, res) => {
       interview,
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to start interview",
     });
   }
 };
