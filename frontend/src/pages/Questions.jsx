@@ -30,7 +30,7 @@ const Questions = () => {
       const response = await axios.post(
         import.meta.env.VITE_BACKEND_URL + `/api/question/remove/${id}`,
         {},
-        { headers: { token } },
+       { withCredentials: true },
       );
 
       if (!response.data.success) {
@@ -88,7 +88,7 @@ const Questions = () => {
     try {
       const response = await axios.get(
         import.meta.env.VITE_BACKEND_URL + "/api/question",
-        { headers: { token } },
+       { withCredentials: true },
       );
       if (response.data.success) {
         setQuestions(response.data.questions);
