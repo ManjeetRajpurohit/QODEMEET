@@ -6,6 +6,7 @@ import axios from "axios";
 import { useContext } from "react";
 import { AppContext } from "../context/Appcontext";
 import { toast } from "react-toastify";
+import api from "../utils/api";
 
 const Signup = () => {
   const [role, setRole] = useState("candidate");
@@ -25,10 +26,18 @@ const Signup = () => {
     }
     setSubmitting(true);
     try {
-      const response = await axios.post(backendUrl + '/api/user/register', { name, username, email, password, role, phoneNumber });
+    const response = await api.post("/api/user/register", {
+  name,
+  username,
+  email,
+  password,
+  role,
+  phoneNumber,
+});
       if (response.data.success) {
-        localStorage.setItem("token", response.data.token);
-        setToken(response.data.token);
+        const userResponse = await api.get("/api/user/me");
+setUser(userResponse.data.user);
+setToken(true);
         toast.success("Account created");
         navigate('/dashboard');
       } else {
