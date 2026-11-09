@@ -1,24 +1,63 @@
+
 import userModel from "../models/userModel.js";
 import bcrypt from "bcryptjs";
 import validator from "validator";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+
 import imagekit from "../config/imagekit.js";
 import sendOtpMail from "../utils/sendOtpMail.js";
 import sendWelcomeMail from "../utils/sendWelcomeMail.js";
 
-const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+const OTP_EXPIRY_MS = 10 * 60 * 1000;
+const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
+const ALLOWED_ROLES = ["candidate", "interviewer"];
 
-const generateOtp = () =>
-  Math.floor(100000 + Math.random() * 900000).toString();
+// Remove private fields before returning user data.
+const sanitizeUser = (user) => {
+  if (!user) return null;
+
+  const safeUser = user.toObject
+    ? user.toObject()
+    : { ...user };
+
+  delete safeUser.password;
+  delete safeUser.otp;
+  delete safeUser.otpExpiry;
+  delete safeUser.__v;
+
+  return safeUser;
+};
+
+// Safely parse JSON fields from multipart/form-data.
+const parseField = (value, fallback) => {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  return JSON.parse(value);
+};
+
+// ==========================================
+// LOGIN
+// ==========================================
 
 const handleLogin = async (req, res) => {
-  const { username, password, role } = req.body;
-
   try {
-    if (!username || !password || !role) {
-      return res.json({
+    const { username, password, role } = req.body || {};
+
+    if (
+      typeof username !== "string" ||
+      typeof password !== "string" ||
+      !ALLOWED_ROLES.includes(role)
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Incomplete details",
+        message: "Invalid login details",
       });
     }
 
@@ -26,131 +65,137 @@ const handleLogin = async (req, res) => {
       username: username.toLowerCase().trim(),
     });
 
-    if (!user) {
-      return res.json({
+    if (!user || !user.password) {
+      return res.status(401).json({
         success: false,
-        message: "User not found",
+        message: "Invalid credentials or use Google sign-in",
       });
     }
 
-    if (!user.password) {
-      return res.json({
-        success: false,
-        message: "This account uses Google sign-in. Continue with Google instead.",
-      });
-    }
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.json({
+    if (!isMatch || role !== user.role) {
+      return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
 
-    if (role !== user.role) {
-      return res.json({
-        success: false,
-        message: "Unauthorized role",
-      });
-    }
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-    // Unverified users can still log in - they're just blocked from
-    // interview/subscription actions (see requireVerified middleware)
-    // until they verify from the profile page.
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    return res.json({
+    return res.status(200).json({
       success: true,
       token,
     });
   } catch (error) {
-    console.error("Login Error:", error.message);
+    console.error("Login error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to login",
     });
   }
 };
 
-const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
+// ==========================================
+// REGISTER
+// ==========================================
 
 const handleRegister = async (req, res) => {
-  const { name, username, email, password, role, phoneNumber } = req.body;
-
   try {
-    if (!name || !username || !email || !password || !role) {
-      return res.json({
+    const {
+      name,
+      username,
+      email,
+      password,
+      role,
+      phoneNumber,
+    } = req.body || {};
+
+    if (
+      typeof name !== "string" ||
+      typeof username !== "string" ||
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !name.trim() ||
+      !username.trim() ||
+      !email.trim() ||
+      !password
+    ) {
+      return res.status(400).json({
         success: false,
         message: "Incomplete details",
       });
     }
 
-    if (role !== "candidate" && role !== "interviewer") {
-      return res.json({
+    if (!ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({
         success: false,
         message: "Invalid role",
       });
     }
 
     const cleanUsername = username.toLowerCase().trim();
+    const cleanEmail = email.toLowerCase().trim();
 
     if (!USERNAME_REGEX.test(cleanUsername)) {
-      return res.json({
+      return res.status(400).json({
         success: false,
-        message:
-          "Username must be 3-20 characters: lowercase letters, numbers, underscores only",
+        message: "Username must be 3-20 characters: lowercase letters, numbers and underscores only",
       });
     }
 
-    if (!validator.isEmail(email)) {
-      return res.json({
+    if (!validator.isEmail(cleanEmail)) {
+      return res.status(400).json({
         success: false,
         message: "Invalid email format",
       });
     }
 
-    if (password.length < 8) {
-      return res.json({
+    if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
+      return res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters",
+        message: "Password must be at least 8 characters and no more than 72 bytes",
       });
     }
 
-    const usernameTaken = await userModel.findOne({
-      username: cleanUsername,
+    if (name.trim().length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Name is too long",
+      });
+    }
+
+    const existingUser = await userModel.findOne({
+      $or: [
+        { username: cleanUsername },
+        { email: cleanEmail },
+      ],
     });
 
-    if (usernameTaken) {
-      return res.json({
+    if (existingUser) {
+      return res.status(409).json({
         success: false,
-        message: "Username already taken",
+        message:
+          existingUser.username === cleanUsername
+            ? "Username already taken"
+            : "Email already registered",
       });
     }
 
-    const existingEmail = await userModel.findOne({ email });
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    if (existingEmail) {
-      return res.json({
-        success: false,
-        message: "Email already registered",
-      });
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Role is set here, once, and is never editable again after this -
-    // see selectRole/updateuser below, neither of which will touch an
-    // account that already has a role.
-    const user = new userModel({
-      name,
+    const user = await userModel.create({
+      name: name.trim(),
       username: cleanUsername,
-      email,
+      email: cleanEmail,
       password: hashedPassword,
       role,
       phoneNumber,
@@ -158,175 +203,211 @@ const handleRegister = async (req, res) => {
       isVerified: false,
     });
 
-    await user.save();
-
-    // Same pattern as the interview/billing mails below: the account
-    // is already created at this point, so a slow or failed welcome
-    // mail must never turn a successful signup into an error response.
-    sendWelcomeMail({ name: user.name, email: user.email }).catch(
-      (mailError) => {
-        console.log("Welcome mail failed:", mailError.message);
-      },
-    );
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+    sendWelcomeMail({
+      name: user.name,
+      email: user.email,
+    }).catch((error) => {
+      console.error("Welcome email failed:", error.message);
     });
 
-    return res.json({
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.status(201).json({
       success: true,
       token,
     });
   } catch (error) {
-    console.error("Register Error:", error.message);
+    console.error("Registration error:", error);
 
-    return res.json({
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Username or email already exists",
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to register",
     });
   }
 };
 
-// One-time-only: the only place a user's role can ever be set after
-// account creation (used by the post-Google-OAuth "select your role"
-// screen). Hard-rejects if the account already has a role - there is
-// no edit path once this succeeds once.
-const selectRole = async (req, res) => {
-  const { role } = req.body;
+// ==========================================
+// SELECT ROLE (GOOGLE OAUTH)
+// ==========================================
 
+const selectRole = async (req, res) => {
   try {
-    if (role !== "candidate" && role !== "interviewer") {
-      return res.json({
+    const { role } = req.body || {};
+
+    if (!ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({
         success: false,
         message: "Invalid role",
       });
     }
 
-    const user = await userModel.findById(req.user._id);
+    const user = await userModel.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        role: { $in: [null, ""] },
+      },
+      {
+        $set: { role },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!user) {
-      return res.json({
+      return res.status(409).json({
         success: false,
-        message: "User not found",
+        message: "Role already set or user not found",
       });
     }
 
-    if (user.role) {
-      return res.json({
-        success: false,
-        message: "Role already set and cannot be changed",
-      });
-    }
-
-    user.role = role;
-
-    await user.save();
-
-    return res.json({
+    return res.status(200).json({
       success: true,
-      user,
+      user: sanitizeUser(user),
     });
   } catch (error) {
-    console.error("Select Role Error:", error.message);
+    console.error("Select role error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to select role",
     });
   }
 };
 
-// Both of these run behind userAuth, so they act on req.user (the
-// logged-in account) rather than trusting an email/otp pair in the
-// body - that's what the profile-page verification flow needs.
+// ==========================================
+// SEND VERIFICATION OTP
+// ==========================================
+
 const sendVerificationOtp = async (req, res) => {
   try {
     const user = await userModel.findById(req.user._id);
 
     if (!user) {
-      return res.json({
+      return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
 
     if (user.isVerified) {
-      return res.json({
+      return res.status(400).json({
         success: false,
         message: "Account already verified",
       });
     }
 
-    const otp = generateOtp();
+    const otp = crypto
+      .randomInt(100000, 1000000)
+      .toString();
 
-    user.otp = otp;
-    user.otpExpiry = new Date(Date.now() + OTP_EXPIRY_MS);
+    // Store a hash rather than the plaintext OTP.
+    user.otp = await bcrypt.hash(otp, 10);
+    user.otpExpiry = new Date(
+      Date.now() + OTP_EXPIRY_MS
+    );
 
     await user.save();
 
     try {
-      await sendOtpMail({ name: user.name, email: user.email, otp });
+      await sendOtpMail({
+        name: user.name,
+        email: user.email,
+        otp,
+      });
     } catch (mailError) {
-      console.log("OTP mail failed:", mailError.message);
+      user.otp = null;
+      user.otpExpiry = null;
+      await user.save();
 
-      return res.json({
+      console.error("OTP email failed:", mailError);
+
+      return res.status(503).json({
         success: false,
-        message: "Couldn't send verification email. Please try again.",
+        message: "Unable to send verification email. Please try again.",
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Verification code sent to your email",
     });
   } catch (error) {
-    console.error("Send Verification OTP Error:", error.message);
+    console.error("Send OTP error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to send verification code",
     });
   }
 };
 
-const verifyAccount = async (req, res) => {
-  const { otp } = req.body;
+// ==========================================
+// VERIFY ACCOUNT
+// ==========================================
 
+const verifyAccount = async (req, res) => {
   try {
-    if (!otp) {
-      return res.json({
+    const { otp } = req.body || {};
+
+    if (
+      typeof otp !== "string" ||
+      !/^\d{6}$/.test(otp)
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Enter the code sent to your email",
+        message: "Enter a valid six-digit verification code",
       });
     }
 
     const user = await userModel.findById(req.user._id);
 
     if (!user) {
-      return res.json({
+      return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
 
     if (user.isVerified) {
-      return res.json({
+      return res.status(400).json({
         success: false,
         message: "Account already verified",
       });
     }
 
-    if (!user.otp || user.otp !== otp) {
-      return res.json({
+    if (
+      !user.otp ||
+      !user.otpExpiry ||
+      user.otpExpiry.getTime() < Date.now()
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Invalid code",
+        message: "Code expired. Please request a new one.",
       });
     }
 
-    if (!user.otpExpiry || user.otpExpiry.getTime() < Date.now()) {
-      return res.json({
+    const isValidOtp = await bcrypt.compare(
+      otp,
+      user.otp
+    );
+
+    if (!isValidOtp) {
+      return res.status(400).json({
         success: false,
-        message: "Code expired. Please request a new one.",
+        message: "Invalid verification code",
       });
     }
 
@@ -336,41 +417,48 @@ const verifyAccount = async (req, res) => {
 
     await user.save();
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: "Account verified",
+      message: "Account verified successfully",
     });
   } catch (error) {
-    console.error("Verify Account Error:", error.message);
+    console.error("Verify account error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to verify account",
     });
   }
 };
+
+// ==========================================
+// GET CURRENT USER
+// ==========================================
 
 const getCurrentUser = async (req, res) => {
   try {
-    return res.json({
+    return res.status(200).json({
       success: true,
-      user: req.user,
+      user: sanitizeUser(req.user),
     });
   } catch (error) {
-    return res.json({
+    console.error("Get current user error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve user",
     });
   }
 };
+
+// ==========================================
+// UPDATE PROFILE
+// ==========================================
+
 const updateuser = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    // NOTE: role is intentionally not accepted here. It is set exactly
-    // once - at signup for local accounts, or via selectRole for
-    // Google accounts - and is never editable through this endpoint
-    // or anywhere else, by design.
     const {
       name,
       username,
@@ -380,26 +468,42 @@ const updateuser = async (req, res) => {
       socialLinks,
       education,
       experience,
-    } = req.body;
+    } = req.body || {};
 
-    let updateData = {
-      name,
-      phoneNumber,
-      location,
-      skills: skills ? JSON.parse(skills) : [],
-      socialLinks: socialLinks ? JSON.parse(socialLinks) : {},
-      education: education ? JSON.parse(education) : {},
-      experience: experience ? JSON.parse(experience) : {},
-    };
+    const updateData = {};
 
-    if (username) {
+    // Role, email, password, verification and subscription
+    // fields are deliberately not editable through this endpoint.
+
+    if (name !== undefined) {
+      if (
+        typeof name !== "string" ||
+        !name.trim() ||
+        name.trim().length > 100
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid name",
+        });
+      }
+
+      updateData.name = name.trim();
+    }
+
+    if (username !== undefined) {
+      if (typeof username !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid username",
+        });
+      }
+
       const cleanUsername = username.toLowerCase().trim();
 
       if (!USERNAME_REGEX.test(cleanUsername)) {
-        return res.json({
+        return res.status(400).json({
           success: false,
-          message:
-            "Username must be 3-20 characters: lowercase letters, numbers, underscores only",
+          message: "Username must be 3-20 characters: lowercase letters, numbers and underscores only",
         });
       }
 
@@ -409,7 +513,7 @@ const updateuser = async (req, res) => {
       });
 
       if (taken) {
-        return res.json({
+        return res.status(409).json({
           success: false,
           message: "Username already taken",
         });
@@ -418,77 +522,241 @@ const updateuser = async (req, res) => {
       updateData.username = cleanUsername;
     }
 
+    if (phoneNumber !== undefined) {
+      if (
+        typeof phoneNumber !== "string" ||
+        phoneNumber.length > 30
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number",
+        });
+      }
+
+      updateData.phoneNumber = phoneNumber;
+    }
+
+    if (location !== undefined) {
+      if (
+        typeof location !== "string" ||
+        location.length > 200
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid location",
+        });
+      }
+
+      updateData.location = location;
+    }
+
+    try {
+      if (skills !== undefined) {
+        const parsed = parseField(skills, []);
+
+        if (!Array.isArray(parsed) || parsed.length > 50) {
+          throw new Error("Invalid skills");
+        }
+
+        updateData.skills = parsed;
+      }
+
+      if (socialLinks !== undefined) {
+        const parsed = parseField(socialLinks, {});
+
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("Invalid social links");
+        }
+
+        updateData.socialLinks = parsed;
+      }
+
+      if (education !== undefined) {
+        const parsed = parseField(education, {});
+
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("Invalid education");
+        }
+
+        updateData.education = parsed;
+      }
+
+      if (experience !== undefined) {
+        const parsed = parseField(experience, {});
+
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("Invalid experience");
+        }
+
+        updateData.experience = parsed;
+      }
+    } catch (parseError) {
+      return res.status(400).json({
+        success: false,
+        message: parseError.message,
+      });
+    }
+
+    // Avatar upload.
     if (req.files?.avatar?.[0]) {
+      const file = req.files.avatar[0];
+
+      if (
+        !file.mimetype?.startsWith("image/") ||
+        file.size > 5 * 1024 * 1024
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Avatar must be an image smaller than 5MB",
+        });
+      }
+
       const avatarUpload = await imagekit.upload({
-        file: req.files.avatar[0].buffer,
-        fileName: `avatar-${Date.now()}`,
+        file: file.buffer,
+        fileName: `avatar-${userId}-${Date.now()}`,
         folder: "/InterviewPro/avatars",
       });
 
       updateData.avatar = avatarUpload.url;
     }
 
+    // Resume upload.
     if (req.files?.resume?.[0]) {
+      const file = req.files.resume[0];
+
+      const isPdf =
+        file.mimetype === "application/pdf" ||
+        file.originalname?.toLowerCase().endsWith(".pdf");
+
+      if (!isPdf || file.size > 5 * 1024 * 1024) {
+        return res.status(400).json({
+          success: false,
+          message: "Resume must be a PDF smaller than 5MB",
+        });
+      }
+
       const resumeUpload = await imagekit.upload({
-        file: req.files.resume[0].buffer,
-        fileName: `resume-${Date.now()}.pdf`,
+        file: file.buffer,
+        fileName: `resume-${userId}-${Date.now()}.pdf`,
         folder: "/InterviewPro/resumes",
       });
 
       updateData.resume = resumeUpload.url;
     }
 
-    const updatedUser = await userModel.findByIdAndUpdate(userId, updateData, {
-      new: true,
-    });
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid profile changes provided",
+      });
+    }
 
-    return res.json({
+    const updatedUser = await userModel.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
       success: true,
       message: "Profile updated successfully",
-      user: updatedUser,
+      user: sanitizeUser(updatedUser),
     });
   } catch (error) {
-    console.log(error);
+    console.error("Update profile error:", error);
 
-    return res.json({
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Username already exists",
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to update profile",
     });
   }
 };
 
+// ==========================================
+// GET USER BY EMAIL
+// ==========================================
+
 const getUserbyemail = async (req, res) => {
   try {
-    const { email } = req.query;
+    const { email } = req.query || {};
 
-    const user = await userModel.findOne({ email });
-
-    if (!user) {
-      return res.json({
+    if (
+      typeof email !== "string" ||
+      !validator.isEmail(email.trim())
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "No user exists",
+        message: "Valid email is required",
       });
     }
 
-    return res.json({
+    const user = await userModel
+      .findOne({
+        email: email.toLowerCase().trim(),
+        role: "candidate",
+      })
+      .select("_id name email role isVerified avatar");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "No candidate exists with this email",
+      });
+    }
+
+    return res.status(200).json({
       success: true,
       user,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Get user by email error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve candidate",
     });
   }
 };
+
+// ==========================================
+// GET SUBSCRIPTION
+// ==========================================
+
 const getSubscription = async (req, res) => {
   try {
     const user = await userModel.findById(req.user._id);
 
     if (!user) {
-      return res.json({
+      return res.status(404).json({
         success: false,
         message: "User not found",
       });
@@ -497,37 +765,42 @@ const getSubscription = async (req, res) => {
     let remainingInterviews = "Unlimited";
 
     if (user.subscriptionPlan === "Free") {
-      remainingInterviews = Math.max(0, 1 - user.interviewsUsed);
+      remainingInterviews = Math.max(
+        0,
+        1 - (user.interviewsUsed || 0)
+      );
     }
 
     if (user.subscriptionPlan === "Pro") {
-      remainingInterviews = Math.max(0, 15 - user.interviewsUsed);
+      remainingInterviews = Math.max(
+        0,
+        15 - (user.interviewsUsed || 0)
+      );
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-
       subscriptionPlan: user.subscriptionPlan,
-
       subscriptionExpiry: user.subscriptionExpiry,
-
       interviewsUsed: user.interviewsUsed,
-
       remainingInterviews,
-
       upcomingPlan: user.upcomingPlan,
-
       upcomingPlanExpiry: user.upcomingPlanExpiry,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Get subscription error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve subscription",
     });
   }
 };
+
+// ==========================================
+// EXPORTS
+// ==========================================
+
 export {
   handleLogin,
   handleRegister,
