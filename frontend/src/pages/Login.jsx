@@ -4,12 +4,13 @@ import { NavLink } from "react-router-dom";
 import { useContext,useState } from "react";
 import { AppContext } from "../context/Appcontext";
 import axios from "axios";
+import api from "../utils/api";
 import { toast } from "react-toastify";
 
 const Login = () => {
   const [role, setRole] = React.useState("candidate");
 
-  const { backendUrl, navigate, setToken } = useContext(AppContext);
+  const { navigate, setToken, setUser } = useContext(AppContext);
 
   const [username, setusername] = useState("");
   const [password, setpassword] = useState("");
@@ -22,15 +23,11 @@ const Login = () => {
     }
 
     try {
-      const response = await axios.post(
-        backendUrl + "/api/user/login",
-        {
-          username,
-          password,
-          role,
-        }
-      );
-
+      const response = await api.post("/api/user/login", {
+  username,
+  password,
+  role,
+});
       if (response.data.success) {
         localStorage.setItem("token", response.data.token);
 
