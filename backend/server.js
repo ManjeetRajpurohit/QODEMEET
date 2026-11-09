@@ -6,7 +6,7 @@ import dns from "dns";
 import passport from "passport";
 import { createServer } from "http";
 import { Server } from "socket.io";
-
+import cookieParser from "cookie-parser";
 import socketAuth, {
   authorizeInterviewRoom,
 } from "./middleware/socketAuth.js";
@@ -31,6 +31,7 @@ const server = createServer(app);
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 // Middleware
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
