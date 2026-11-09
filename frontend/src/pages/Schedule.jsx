@@ -30,7 +30,7 @@ const Schedule = () => {
     try {
       const response = await axios.get(
         `${import.meta.env.VITE_BACKEND_URL}/api/question`,
-        { headers: { token } },
+        { withCredentials: true },
       );
 
       if (response.data.success) {
@@ -108,9 +108,7 @@ const Schedule = () => {
         `${import.meta.env.VITE_BACKEND_URL}/api/interview/schedule`,
         payload,
         {
-          headers: {
-            token,
-          },
+         { withCredentials: true },
         },
       );
 
