@@ -168,10 +168,7 @@ const Profile = () => {
     try {
       const response = await axios.get(
         import.meta.env.VITE_BACKEND_URL + "/api/user/me",
-        {
-          headers: {
-            token,
-          },
+        { withCredentials: true },
         },
       );
 
@@ -224,7 +221,7 @@ const Profile = () => {
       const response = await axios.post(
         import.meta.env.VITE_BACKEND_URL + "/api/user/send-verification",
         {},
-        { headers: { token } },
+       { withCredentials: true },
       );
 
       if (response.data.success) {
@@ -252,7 +249,7 @@ const Profile = () => {
       const response = await axios.post(
         import.meta.env.VITE_BACKEND_URL + "/api/user/verify-account",
         { otp },
-        { headers: { token } },
+        { withCredentials: true },
       );
 
       if (response.data.success) {
