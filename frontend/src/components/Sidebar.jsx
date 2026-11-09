@@ -86,11 +86,11 @@ const Sidebar = () => {
       },
     ];
   }
-  const {navigate} =useContext(AppContext)
-  const handleLogout=()=>{
-      localStorage.removeItem("token");
-      navigate('/login');
-  }
+  const { logout } = useContext(AppContext);
+
+const handleLogout = async () => {
+  await logout();
+};
 
   return (
     <>
