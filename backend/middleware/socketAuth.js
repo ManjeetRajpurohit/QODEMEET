@@ -4,7 +4,7 @@ import interviewModel from "../models/interviewModel.js";
 
 const socketAuth = async (socket, next) => {
   try {
-    const token = socket.handshake.auth?.token;
+   const token = socket.request.cookies?.qodemeet_token;
 
     if (!token) {
       return next(new Error("Authentication required"));
