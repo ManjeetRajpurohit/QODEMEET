@@ -1,12 +1,11 @@
 import React, { useContext, useState } from "react";
 import { User, Briefcase, ArrowRight } from "lucide-react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import { AppContext } from "../context/Appcontext";
 import logo from "../assets/LOGO.png";
-
+import api from "../utils/api";
 const SelectRole = () => {
-  const { backendUrl, token, setUser, navigate } = useContext(AppContext);
+  const { setUser, navigate } = useContext(AppContext);
 
   const [role, setRole] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -20,11 +19,7 @@ const SelectRole = () => {
     setSubmitting(true);
 
     try {
-      const response = await axios.post(
-        `${backendUrl}/api/user/select-role`,
-        { role },
-        { headers: { token } },
-      );
+      const response = await api.post("/api/user/select-role", { role });
 
       if (response.data.success) {
         setUser(response.data.user);
