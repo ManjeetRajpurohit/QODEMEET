@@ -1,12 +1,36 @@
-import express from "express"
-import {AddBill,getSingleBill,listAllBills, razorpayBill,verifyBill} from '../controllers/billingController.js';
+
+import express from "express";
+
+import {
+  getSingleBill,
+  listAllBills,
+  razorpayBill,
+  verifyBill,
+} from "../controllers/billingController.js";
+
 import userAuth from "../middleware/userAuth.js";
 import requireVerified from "../middleware/requireVerified.js";
-const billingRouter=express.Router();
 
-billingRouter.get('/',listAllBills);
-billingRouter.get('/:id',getSingleBill);
-billingRouter.post('/add',AddBill);
-billingRouter.post('/razorpay',userAuth,requireVerified,razorpayBill);
-billingRouter.post("/verify", userAuth, verifyBill);
+const billingRouter = express.Router();
+
+// All billing information requires authentication.
+billingRouter.get("/", userAuth, listAllBills);
+billingRouter.get("/:id", userAuth, getSingleBill);
+
+// Create Razorpay order.
+billingRouter.post(
+  "/razorpay",
+  userAuth,
+  requireVerified,
+  razorpayBill
+);
+
+// Verify Razorpay payment.
+billingRouter.post(
+  "/verify",
+  userAuth,
+  requireVerified,
+  verifyBill
+);
+
 export default billingRouter;
