@@ -69,7 +69,7 @@ const CodeEditor = ({
           language,
           questionId,
         },
-        { headers: { token } }
+       { withCredentials: true }
       );
 
       if (response.data.success) {
