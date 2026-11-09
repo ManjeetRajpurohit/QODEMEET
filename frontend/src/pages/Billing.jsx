@@ -83,9 +83,8 @@ const Billing = () => {
   const fetchSubscription = async () => {
     try {
       const { data } = await axios.get(`${backendUrl}/api/user/subscription`, {
-        headers: {
-          token,
-        },
+  withCredentials: true,
+}
       });
 
       if (data.success) {
@@ -117,9 +116,9 @@ const Billing = () => {
           const { data } = await axios.post(
             `${backendUrl}/api/bill/verify`,
             response,
-            {
-              headers: { token },
-            },
+           {
+  withCredentials: true,
+}
           );
 
           if (data.success) {
