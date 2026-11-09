@@ -11,6 +11,8 @@ import {
   getSubscription
 } from "../controllers/userController.js";
 
+import requireInterviewer from "../middleware/requireInterviewer.js";
+
 import userAuth from "../middleware/userAuth.js";
 import upload from "../middleware/multer.js";
 
@@ -28,7 +30,12 @@ userRouter.post("/send-verification", userAuth, sendVerificationOtp);
 userRouter.post("/verify-account", userAuth, verifyAccount);
 
 userRouter.get("/me", userAuth, getCurrentUser);
-userRouter.get("/get-email", userAuth, getUserbyemail);
+userRouter.get(
+  "/get-email",
+  userAuth,
+  requireInterviewer,
+  getUserbyemail
+);
 userRouter.get("/subscription", userAuth, getSubscription);
 
 userRouter.post(
