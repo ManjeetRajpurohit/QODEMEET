@@ -32,11 +32,7 @@ const CandidateDashboard = () => {
     try {
       const { data } = await axios.get(
         `${backendUrl}/api/dashboard/candidate-dashboard`,
-        {
-          headers: {
-            token,
-          },
-        },
+        { withCredentials: true },
       );
 
       if (data.success) {
@@ -48,7 +44,11 @@ const CandidateDashboard = () => {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
+   const { logout } = useContext(AppContext);
+
+const handleLogout = async () => {
+  await logout();
+};
 
     if (setToken) {
       setToken("");
