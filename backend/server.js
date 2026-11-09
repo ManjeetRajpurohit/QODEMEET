@@ -52,7 +52,7 @@ const io = new Server(server, {
     credentials: true,
   },
 });
-
+io.engine.use(cookieParser());
 // Authenticate every socket connection.
 io.use(socketAuth);
 
