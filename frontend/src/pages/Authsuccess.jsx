@@ -1,42 +1,38 @@
 import { useEffect, useContext } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { AppContext } from "../context/Appcontext";
+import api from "../utils/api";
 
 const Authsuccess = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { setToken } = useContext(AppContext);
+  const { setToken, setUser } = useContext(AppContext);
 
   useEffect(() => {
-    const token = searchParams.get("token");
-
-    if (token) {
-      localStorage.setItem("token", token);
-      setToken(token);
-
-      // The JWT payload carries the user's role (set at Google account
-      // creation). Decode it here so we can send brand-new users to
-      // /select-role instead of dumping them straight into /dashboard,
-      // which has no way of knowing a role hasn't been picked yet.
+    const verifySession = async () => {
       try {
-        const base64Url = token.split(".")[1];
-        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-        const payload = JSON.parse(atob(base64));
+        const response = await api.get("/api/user/me");
 
-        navigate(payload.role ? "/dashboard" : "/select-role");
+        if (!response.data.success) {
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        const user = response.data.user;
+        setUser(user);
+        setToken(true);
+
+        navigate(user.role ? "/dashboard" : "/select-role", {
+          replace: true,
+        });
       } catch (error) {
-        navigate("/dashboard");
+        navigate("/login", { replace: true });
       }
-    } else {
-      navigate("/login");
-    }
-  }, []);
+    };
 
-  return (
-    <div className="text-white">
-      Logging you in...
-    </div>
-  );
+    verifySession();
+  }, [navigate, setToken, setUser]);
+
+  return <div className="text-white">Logging you in...</div>;
 };
 
 export default Authsuccess;
