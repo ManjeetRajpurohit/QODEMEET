@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
@@ -5,6 +6,8 @@ const userSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
+      maxlength: 100,
     },
 
     username: {
@@ -27,6 +30,7 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       default: null,
+      select: false,
     },
 
     googleId: {
@@ -55,20 +59,20 @@ const userSchema = new mongoose.Schema(
     otp: {
       type: String,
       default: null,
+      select: false,
     },
 
     otpExpiry: {
       type: Date,
       default: null,
+      select: false,
     },
 
-    // Set once, either at local signup (form) or via the post-Google
-    // role-select screen, and never changed again after that (see
-    // selectRole in userController.js — it hard-rejects if this is
-    // already non-null). null here means "hasn't picked yet."
+    // Only two supported roles.
+    // Role selection is permitted only once.
     role: {
       type: String,
-      enum: ["candidate", "interviewer", "admin"],
+      enum: ["candidate", "interviewer"],
       default: null,
     },
 
@@ -120,6 +124,7 @@ const userSchema = new mongoose.Schema(
       designation: String,
       duration: String,
     },
+
     subscriptionPlan: {
       type: String,
       enum: ["Free", "Pro", "Enterprise", "Annual"],
@@ -134,6 +139,7 @@ const userSchema = new mongoose.Schema(
     interviewsUsed: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     billingCycleStart: {
@@ -154,7 +160,7 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
+  }
 );
 
 const userModel = mongoose.model("User", userSchema);
