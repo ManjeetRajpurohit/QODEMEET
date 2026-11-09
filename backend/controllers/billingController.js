@@ -1,156 +1,174 @@
+
 import billingModel from "../models/billingModel.js";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import sendSubscriptionMail from "../utils/sendSubscriptionMail.js";
 import userModel from "../models/userModel.js";
+import mongoose from "mongoose";
 
 const razorpayInstance = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+// Server-controlled plan prices (amounts in INR).
+const PLAN_PRICES = {
+  Pro: 9,
+  Enterprise: 29,
+  Annual: 99,
+};
+
+const PLAN_DURATION = {
+  Pro: 30,
+  Enterprise: 30,
+  Annual: 365,
+};
+
+// ==========================================
+// GET ALL BILLS
+// ==========================================
+
 const listAllBills = async (req, res) => {
   try {
-    const bills = await billingModel.find({}).sort({ createdAt: -1 });
+    const bills = await billingModel
+      .find({ userId: req.user._id })
+      .sort({ createdAt: -1 })
+      .lean();
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       bills,
     });
   } catch (error) {
-    console.log(error);
-    return res.json({
+    console.error("List bills error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve billing history",
     });
   }
 };
+
+// ==========================================
+// GET SINGLE BILL
+// ==========================================
 
 const getSingleBill = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const bill = await billingModel.findById(id);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bill ID",
+      });
+    }
+
+    const bill = await billingModel.findOne({
+      _id: id,
+      userId: req.user._id,
+    });
 
     if (!bill) {
-      return res.json({
+      return res.status(404).json({
         success: false,
-        message: "No bill found",
+        message: "Bill not found",
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       bill,
     });
   } catch (error) {
-    console.log(error);
-    return res.json({
+    console.error("Get bill error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve bill",
     });
   }
 };
 
-const AddBill = async (req, res) => {
-  try {
-    const {
-      userId,
-      orderId,
-      paymentId,
-      signature,
-      amount,
-      currency,
-      plan,
-      status,
-      receipt,
-      invoiceUrl,
-      paidAt,
-    } = req.body;
-
-    const existingBill = await billingModel.findOne({ paymentId });
-
-    if (existingBill) {
-      return res.json({
-        success: false,
-        message: "Bill already exists",
-      });
-    }
-
-    const bill = await billingModel.create({
-      userId,
-      orderId,
-      paymentId,
-      signature,
-      amount,
-      currency,
-      plan,
-      status,
-      receipt,
-      invoiceUrl,
-      paidAt,
-    });
-
-    return res.json({
-      success: true,
-      bill,
-    });
-  } catch (error) {
-    console.log(error);
-    return res.json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+// ==========================================
+// CREATE RAZORPAY ORDER
+// ==========================================
 
 const razorpayBill = async (req, res) => {
   try {
-    const { plan } = req.body;
+    const { plan } = req.body || {};
 
-    let amount = 0;
-
-    if (plan === "Pro") amount = 9;
-    else if (plan === "Enterprise") amount = 29;
-    else if (plan === "Annual") amount = 99;
-    else {
-      return res.json({
+    if (!Object.hasOwn(PLAN_PRICES, plan)) {
+      return res.status(400).json({
         success: false,
-        message: "Invalid plan",
+        message: "Invalid subscription plan",
       });
     }
 
-    const options = {
+    if (
+      !process.env.RAZORPAY_KEY_ID ||
+      !process.env.RAZORPAY_KEY_SECRET
+    ) {
+      return res.status(503).json({
+        success: false,
+        message: "Payment service is unavailable",
+      });
+    }
+
+    const user = await userModel.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const amount = PLAN_PRICES[plan];
+
+    const receipt = `bill_${crypto.randomUUID()}`;
+
+    const order = await razorpayInstance.orders.create({
       amount: amount * 100,
       currency: "INR",
-      receipt: `bill_${Date.now()}`,
-    };
-
-    const order = await razorpayInstance.orders.create(options);
+      receipt,
+      notes: {
+        userId: user._id.toString(),
+        plan,
+      },
+    });
 
     await billingModel.create({
-      userId: req.user._id,
+      userId: user._id,
       orderId: order.id,
       amount,
       currency: "INR",
       plan,
       status: "created",
-      receipt: options.receipt,
+      receipt,
     });
 
-    return res.json({
+    return res.status(201).json({
       success: true,
       order,
+      key: process.env.RAZORPAY_KEY_ID,
     });
   } catch (error) {
-    console.log(error);
+    console.error(
+      "Razorpay order creation error:",
+      error.response?.data || error.message
+    );
 
-    return res.json({
+    return res.status(502).json({
       success: false,
-      message: error.message,
+      message: "Unable to create payment order",
     });
   }
 };
+
+// ==========================================
+// VERIFY RAZORPAY PAYMENT
+// ==========================================
 
 const verifyBill = async (req, res) => {
   try {
@@ -158,58 +176,185 @@ const verifyBill = async (req, res) => {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
-    } = req.body;
+    } = req.body || {};
 
-    const generatedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
-
-    if (generatedSignature !== razorpay_signature) {
-      await billingModel.findOneAndUpdate(
-        { orderId: razorpay_order_id },
-        { status: "failed" }
-      );
-
-      return res.json({
+    // Validate request.
+    if (
+      typeof razorpay_order_id !== "string" ||
+      typeof razorpay_payment_id !== "string" ||
+      typeof razorpay_signature !== "string" ||
+      !razorpay_order_id ||
+      !razorpay_payment_id ||
+      !/^[a-f0-9]{128}$/i.test(razorpay_signature)
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Invalid signature",
+        message: "Invalid payment verification details",
       });
     }
 
+    // Find an order belonging to the authenticated user.
+    const existingBill = await billingModel.findOne({
+      orderId: razorpay_order_id,
+      userId: req.user._id,
+    });
+
+    if (!existingBill) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment order not found",
+      });
+    }
+
+    // Prevent duplicate payment processing.
+    if (existingBill.status === "paid") {
+      if (existingBill.paymentId === razorpay_payment_id) {
+        return res.status(200).json({
+          success: true,
+          message: "Payment already verified",
+          bill: existingBill,
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: "Order has already been processed",
+      });
+    }
+
+    if (existingBill.status !== "created") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment order is no longer valid",
+      });
+    }
+
+    // Verify HMAC signature.
+    const generatedSignature = crypto
+      .createHmac(
+        "sha256",
+        process.env.RAZORPAY_KEY_SECRET
+      )
+      .update(
+        `${razorpay_order_id}|${razorpay_payment_id}`
+      )
+      .digest("hex");
+
+    const generatedBuffer = Buffer.from(
+      generatedSignature,
+      "hex"
+    );
+
+    const receivedBuffer = Buffer.from(
+      razorpay_signature,
+      "hex"
+    );
+
+    const signatureValid =
+      generatedBuffer.length === receivedBuffer.length &&
+      crypto.timingSafeEqual(
+        generatedBuffer,
+        receivedBuffer
+      );
+
+    if (!signatureValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment signature",
+      });
+    }
+
+    // Fetch order directly from Razorpay.
+    const razorpayOrder =
+      await razorpayInstance.orders.fetch(
+        razorpay_order_id
+      );
+
+    if (
+      razorpayOrder.id !== razorpay_order_id ||
+      razorpayOrder.amount !== existingBill.amount * 100 ||
+      razorpayOrder.currency !== existingBill.currency
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment order details do not match",
+      });
+    }
+
+    // Verify payment directly with Razorpay.
+    const payment =
+      await razorpayInstance.payments.fetch(
+        razorpay_payment_id
+      );
+
+    if (
+      payment.order_id !== razorpay_order_id ||
+      payment.amount !== razorpayOrder.amount ||
+      payment.currency !== razorpayOrder.currency ||
+      payment.status !== "captured"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment has not been successfully captured",
+      });
+    }
+
+    // Atomically mark the order as paid.
+    // Prevents two simultaneous requests from activating
+    // the same subscription twice.
     const bill = await billingModel.findOneAndUpdate(
-      { orderId: razorpay_order_id },
       {
-        paymentId: razorpay_payment_id,
-        signature: razorpay_signature,
-        status: "paid",
-        paidAt: new Date(),
+        _id: existingBill._id,
+        userId: req.user._id,
+        status: "created",
       },
-      { new: true }
+      {
+        $set: {
+          paymentId: razorpay_payment_id,
+          signature: razorpay_signature,
+          status: "paid",
+          paidAt: new Date(),
+        },
+      },
+      {
+        new: true,
+      }
     );
 
     if (!bill) {
-      return res.json({
+      return res.status(409).json({
         success: false,
-        message: "Bill not found",
+        message: "Payment order has already been processed",
       });
     }
 
+    // Activate subscription.
     const user = await userModel.findById(bill.userId);
 
     if (!user) {
-      return res.json({
+      console.error(
+        "Paid bill has no associated user:",
+        bill._id
+      );
+
+      return res.status(500).json({
         success: false,
-        message: "User not found",
+        message: "Payment received but subscription activation failed. Contact support.",
+        paymentReceived: true,
       });
     }
 
     const now = new Date();
 
-    const durationDays =
-      bill.plan === "Annual"
-        ? 365
-        : 30;
+    const durationDays = PLAN_DURATION[bill.plan];
+
+    if (!durationDays) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid subscription duration",
+        paymentReceived: true,
+      });
+    }
 
     const expiryDate = new Date(
       now.getTime() +
@@ -220,17 +365,28 @@ const verifyBill = async (req, res) => {
       !user.subscriptionExpiry ||
       user.subscriptionExpiry < now;
 
-    if (user.subscriptionPlan === "Free" || isExpired) {
+    if (
+      user.subscriptionPlan === "Free" ||
+      isExpired
+    ) {
       user.subscriptionPlan = bill.plan;
       user.subscriptionExpiry = expiryDate;
       user.interviewsUsed = 0;
       user.billingCycleStart = now;
       user.upcomingPlan = null;
       user.upcomingPlanExpiry = null;
-    } else if (user.subscriptionPlan === bill.plan) {
+    } else if (
+      user.subscriptionPlan === bill.plan
+    ) {
+      // Queue renewal of the existing plan.
       user.upcomingPlan = bill.plan;
-      user.upcomingPlanExpiry = expiryDate;
+
+      user.upcomingPlanExpiry = new Date(
+        user.subscriptionExpiry.getTime() +
+          durationDays * 24 * 60 * 60 * 1000
+      );
     } else {
+      // Switch to the newly purchased plan.
       user.subscriptionPlan = bill.plan;
       user.subscriptionExpiry = expiryDate;
       user.interviewsUsed = 0;
@@ -241,10 +397,7 @@ const verifyBill = async (req, res) => {
 
     await user.save();
 
-    // Don't let a mail failure undo a successful, already-saved
-    // payment - this used to throw into the catch below and report
-    // "failed" to the user even though the payment had gone through
-    // and the subscription was already activated.
+    // Send confirmation email without blocking payment response.
     sendSubscriptionMail(
       user.email,
       user.name,
@@ -253,27 +406,32 @@ const verifyBill = async (req, res) => {
       bill.orderId,
       bill.paymentId,
       bill._id
-    ).catch((mailError) => {
-      console.log("Failed to send subscription mail:", mailError);
+    ).catch((error) => {
+      console.error(
+        "Subscription email failed:",
+        error
+      );
     });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: "Payment Successful",
+      message: "Payment successful",
       bill,
     });
   } catch (error) {
-    console.log(error);
+    console.error(
+      "Payment verification error:",
+      error.response?.data || error.message
+    );
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to verify payment. Contact support if money was deducted.",
     });
   }
 };
 
 export {
-  AddBill,
   getSingleBill,
   listAllBills,
   razorpayBill,
