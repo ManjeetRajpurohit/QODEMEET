@@ -1,121 +1,157 @@
+
 import interviewModel from "../models/interviewModel.js";
 import reportModel from "../models/reportModel.js";
 import billingModel from "../models/billingModel.js";
 
+// ==========================================
+// CANDIDATE DASHBOARD
+// ==========================================
+
 const getCandidateDashboard = async (req, res) => {
   try {
+    if (req.user.role !== "candidate") {
+      return res.status(403).json({
+        success: false,
+        message: "Candidate access only",
+      });
+    }
+
     const userId = req.user._id;
 
-    const upcomingInterviews =
-      await interviewModel.countDocuments({
+    const [
+      upcomingInterviews,
+      completedInterviews,
+      reportsReceived,
+      latestBill,
+      upcomingList,
+    ] = await Promise.all([
+      interviewModel.countDocuments({
         candidate: userId,
         status: "scheduled",
-      });
+      }),
 
-    const completedInterviews =
-      await interviewModel.countDocuments({
+      interviewModel.countDocuments({
         candidate: userId,
         status: "completed",
-      });
+      }),
 
-    const reportsReceived =
-      await reportModel.countDocuments({
+      reportModel.countDocuments({
         candidate: userId,
-      });
+      }),
 
-    const currentPlan =
-      (
-        await billingModel
-          .findOne({
-            userId,
-            status: "paid",
-          })
-          .sort({ createdAt: -1 })
-      )?.plan || "Free";
+      billingModel
+        .findOne({
+          userId,
+          status: "paid",
+        })
+        .sort({ createdAt: -1 })
+        .select("plan"),
 
-    const upcomingList = await interviewModel
-      .find({
-        candidate: userId,
-        status: "scheduled",
-      })
-      .populate("interviewer", "name")
-      .sort({ date: 1 });
+      interviewModel
+        .find({
+          candidate: userId,
+          status: "scheduled",
+        })
+        .populate("interviewer", "name")
+        .sort({ date: 1 })
+        .limit(10),
+    ]);
 
-    res.json({
+    return res.status(200).json({
       success: true,
       stats: {
         upcomingInterviews,
         completedInterviews,
         reportsReceived,
-        currentPlan,
+        currentPlan: latestBill?.plan || "Free",
       },
       upcomingList,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Candidate dashboard error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to load candidate dashboard",
     });
   }
 };
-const getInterviewerDashboard = async (
-  req,
-  res
-) => {
+
+// ==========================================
+// INTERVIEWER DASHBOARD
+// ==========================================
+
+const getInterviewerDashboard = async (req, res) => {
   try {
+    if (req.user.role !== "interviewer") {
+      return res.status(403).json({
+        success: false,
+        message: "Interviewer access only",
+      });
+    }
+
     const userId = req.user._id;
 
-    const upcomingInterviews =
-      await interviewModel.countDocuments({
+    const [
+      upcomingInterviews,
+      completedInterviews,
+      cancelledInterviews,
+      completedInterviewList,
+      reports,
+      upcomingList,
+    ] = await Promise.all([
+      interviewModel.countDocuments({
         interviewer: userId,
         status: "scheduled",
-      });
+      }),
 
-    const completedInterviews =
-      await interviewModel.countDocuments({
+      interviewModel.countDocuments({
         interviewer: userId,
         status: "completed",
-      });
+      }),
 
-    const cancelledInterviews =
-      await interviewModel.countDocuments({
+      interviewModel.countDocuments({
         interviewer: userId,
         status: "cancelled",
-      });
+      }),
 
-    const completedInterviewList =
-      await interviewModel.find({
-        interviewer: userId,
-        status: "completed",
-      });
+      interviewModel
+        .find({
+          interviewer: userId,
+          status: "completed",
+        })
+        .select("_id")
+        .lean(),
 
-    const reports = await reportModel.find({
-      interviewer: userId,
-    });
+      reportModel
+        .find({
+          interviewer: userId,
+        })
+        .select("interview")
+        .lean(),
 
-    const reportInterviewIds = reports.map((r) =>
-      r.interview.toString()
+      interviewModel
+        .find({
+          interviewer: userId,
+          status: "scheduled",
+        })
+        .populate("candidate", "name")
+        .sort({ date: 1 })
+        .limit(10),
+    ]);
+
+    const reportInterviewIds = new Set(
+      reports.map((report) =>
+        report.interview?.toString()
+      )
     );
 
-    const pendingReports =
-      completedInterviewList.filter(
-        (interview) =>
-          !reportInterviewIds.includes(
-            interview._id.toString()
-          )
-      ).length;
+    const pendingReports = completedInterviewList.filter(
+      (interview) =>
+        !reportInterviewIds.has(interview._id.toString())
+    ).length;
 
-    const upcomingList = await interviewModel
-      .find({
-        interviewer: userId,
-        status: "scheduled",
-      })
-      .populate("candidate", "name")
-      .sort({ date: 1 });
-
-    res.json({
+    return res.status(200).json({
       success: true,
       upcomingInterviews,
       completedInterviews,
@@ -124,12 +160,16 @@ const getInterviewerDashboard = async (
       upcomingList,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Interviewer dashboard error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to load interviewer dashboard",
     });
   }
 };
-export {getCandidateDashboard,getInterviewerDashboard};
+
+export {
+  getCandidateDashboard,
+  getInterviewerDashboard,
+};
