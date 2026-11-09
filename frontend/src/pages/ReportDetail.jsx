@@ -16,9 +16,7 @@ const ReportDetail = () => {
     try {
       const response = await axios.get(
         `${import.meta.env.VITE_BACKEND_URL}/api/report/${id}`,
-        {
-          headers: { token },
-        },
+       { withCredentials: true },
       );
 
       console.log(response.data);
