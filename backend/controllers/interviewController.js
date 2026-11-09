@@ -319,47 +319,57 @@ const getSingleInterview = async (req, res) => {
   }
 };
 
+
+
 const endInterview = async (req, res) => {
   try {
     const { id } = req.params;
 
     const interview = await interviewModel
-      .findById(id)
+      .findOneAndUpdate(
+        {
+          _id: id,
+          interviewer: req.user._id,
+          status: "started",
+        },
+        {
+          $set: {
+            status: "completed",
+            endedAt: new Date(),
+          },
+        },
+        { new: true }
+      )
       .populate("candidate", "name email");
 
     if (!interview) {
-      return res.json({
+      return res.status(404).json({
         success: false,
-        message: "Interview not found",
+        message: "Interview not found or unauthorized",
       });
     }
-
-    interview.status = "completed";
-    interview.endedAt = new Date();
-
-    await interview.save();
 
     sendInterviewEndedMail(
       interview.candidate.email,
       interview.candidate.name,
-      interview.title,
-    ).catch((mailError) => {
-      console.log("Failed to send end-of-interview mail:", mailError);
+      interview.title
+    ).catch((error) => {
+      console.error("End interview email failed:", error);
     });
 
     return res.json({
       success: true,
+      message: "Interview ended successfully",
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to end interview",
     });
   }
 };
-
 const startInterview = async (req, res) => {
   try {
     const { id } = req.params;
