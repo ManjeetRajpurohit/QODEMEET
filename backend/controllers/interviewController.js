@@ -9,16 +9,17 @@ import userModel from "../models/userModel.js";
 const schedule = async (req, res) => {
   try {
     const {
-      title,
-      candidate,
-      interviewer,
-      language,
-      questions,
-      date,
-      time,
-      expectedDuration,
-      internalNotes,
-    } = req.body;
+  title,
+  candidate,
+  language,
+  questions,
+  date,
+  time,
+  expectedDuration,
+  internalNotes,
+} = req.body;
+
+const interviewer = req.user._id;
 
     if (!questions || questions.length === 0) {
       return res.json({
@@ -98,12 +99,12 @@ const schedule = async (req, res) => {
 
     const candidateForCheck = await userModel.findById(candidate);
 
-    if (!candidateForCheck) {
-      return res.json({
-        success: false,
-        message: "Candidate not found",
-      });
-    }
+   if (candidateForCheck.role !== "candidate") {
+  return res.status(400).json({
+    success: false,
+    message: "Selected user is not a candidate",
+  });
+}
 
     if (!candidateForCheck.isVerified) {
       return res.json({
