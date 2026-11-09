@@ -48,15 +48,15 @@ const InterviewRoom = () => {
   const [mobileTab, setMobileTab] = useState("code");
 
   const socket = useMemo(
-    () =>
-     io(backendUrl, {
-  transports: ["websocket"],
-  auth: {
-    token,
-  },
-})
-    [backendUrl],
-  );
+  () =>
+    io(backendUrl, {
+      transports: ["websocket"],
+      auth: {
+        token,
+      },
+    }),
+  [backendUrl, token],
+);
 
   const {
     localVideoRef,
