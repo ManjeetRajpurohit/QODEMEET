@@ -1,20 +1,34 @@
-import express from 'express'
-import userAuth from '../middleware/userAuth.js';
+
+import express from "express";
+import userAuth from "../middleware/userAuth.js";
+import requireInterviewer from "../middleware/requireInterviewer.js";
+
 import {
   AddQuestion,
   DeleteQuestion,
   singleQuestion,
-  ALLquestions
-} from '../controllers/QuestionController.js';
+  ALLquestions,
+} from "../controllers/QuestionController.js";
 
 const questionRouter = express.Router();
 
-questionRouter.post('/add',userAuth, AddQuestion);
+// Read access: authenticated users
+questionRouter.get("/", userAuth, ALLquestions);
+questionRouter.get("/:id", userAuth, singleQuestion);
 
-questionRouter.post('/remove/:id', userAuth,DeleteQuestion);
+// Write access: interviewers only
+questionRouter.post(
+  "/add",
+  userAuth,
+  requireInterviewer,
+  AddQuestion
+);
 
-questionRouter.get('/',userAuth, ALLquestions);
-
-questionRouter.get('/:id',userAuth, singleQuestion);
+questionRouter.post(
+  "/remove/:id",
+  userAuth,
+  requireInterviewer,
+  DeleteQuestion
+);
 
 export default questionRouter;
