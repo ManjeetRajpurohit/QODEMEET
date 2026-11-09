@@ -6,6 +6,8 @@ import passport from "passport";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
+import socketAuth from "./middleware/socketAuth.js";
+
 import connectDB from "./config/mongoDb.js";
 import "./config/passport.js";
 
@@ -45,6 +47,8 @@ const io = new Server(server, {
     credentials: true,
   },
 });
+
+io.use(socketAuth);
 
 io.on("connection", (socket) => {
   console.log(`User Connected: ${socket.id}`);
