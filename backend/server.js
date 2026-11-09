@@ -6,7 +6,9 @@ import passport from "passport";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
-import socketAuth from "./middleware/socketAuth.js";
+import socketAuth, {
+  authorizeInterviewRoom,
+} from "./middleware/socketAuth.js";
 
 import connectDB from "./config/mongoDb.js";
 import "./config/passport.js";
