@@ -1,55 +1,118 @@
+
+import mongoose from "mongoose";
+
 import interviewModel from "../models/interviewModel.js";
+
 import {
   sendInterviewStartedMail,
   sendInterviewScheduledMail,
   sendInterviewEndedMail,
   sendInterviewCancelledMail,
 } from "../utils/sendInterviewMail.js";
+
 import userModel from "../models/userModel.js";
+
+// ==========================================
+// SCHEDULE INTERVIEW
+// ==========================================
+
 const schedule = async (req, res) => {
   try {
     const {
-  title,
-  candidate,
-  language,
-  questions,
-  date,
-  time,
-  expectedDuration,
-  internalNotes,
-} = req.body;
+      title,
+      candidate,
+      language,
+      questions,
+      date,
+      time,
+      expectedDuration,
+      internalNotes,
+    } = req.body;
 
-const interviewer = req.user._id;
+    // Only the authenticated interviewer can schedule.
+    const interviewer = req.user._id;
 
-    if (!questions || questions.length === 0) {
-      return res.json({
+    if (req.user.role !== "interviewer") {
+      return res.status(403).json({
         success: false,
-        message: "Select Atleast One Question",
+        message: "Only interviewers can schedule interviews",
       });
     }
 
-    const currentUser = await userModel.findById(req.user._id);
+    if (
+      !title ||
+      !candidate ||
+      !language ||
+      !date ||
+      !time ||
+      !expectedDuration
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(candidate)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid candidate ID",
+      });
+    }
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Select at least one question",
+      });
+    }
+
+    const currentUser = await userModel.findById(interviewer);
 
     if (!currentUser) {
-      return res.json({
+      return res.status(404).json({
         success: false,
-        message: "User not found",
+        message: "Interviewer not found",
+      });
+    }
+
+    const candidateForCheck = await userModel.findById(candidate);
+
+    if (!candidateForCheck) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    if (candidateForCheck.role !== "candidate") {
+      return res.status(400).json({
+        success: false,
+        message: "Selected user is not a candidate",
+      });
+    }
+
+    if (!candidateForCheck.isVerified) {
+      return res.status(403).json({
+        success: false,
+        notVerified: true,
+        message: "This candidate hasn't verified their account yet",
       });
     }
 
     const now = new Date();
 
-    // Reset monthly usage
+    // Reset monthly usage.
     if (
       currentUser.billingCycleStart &&
-      now - currentUser.billingCycleStart >= 30 * 24 * 60 * 60 * 1000
+      now - currentUser.billingCycleStart >=
+        30 * 24 * 60 * 60 * 1000
     ) {
       currentUser.interviewsUsed = 0;
       currentUser.billingCycleStart = now;
-      await currentUser.save();
     }
 
-    // Activate upcoming plan if current expired
+    // Activate upcoming plan if current subscription expired.
     if (
       currentUser.subscriptionExpiry &&
       currentUser.subscriptionExpiry < now
@@ -58,7 +121,7 @@ const interviewer = req.user._id;
         currentUser.subscriptionPlan = currentUser.upcomingPlan;
 
         currentUser.subscriptionExpiry = new Date(
-          now.getTime() + 30 * 24 * 60 * 60 * 1000,
+          now.getTime() + 30 * 24 * 60 * 60 * 1000
         );
 
         currentUser.upcomingPlan = null;
@@ -70,11 +133,9 @@ const interviewer = req.user._id;
 
       currentUser.interviewsUsed = 0;
       currentUser.billingCycleStart = now;
-
-      await currentUser.save();
     }
 
-    // Plan Limits
+    // Plan limits.
     if (
       currentUser.subscriptionPlan === "Free" &&
       currentUser.interviewsUsed >= 1
@@ -97,27 +158,10 @@ const interviewer = req.user._id;
       });
     }
 
-    const candidateForCheck = await userModel.findById(candidate);
-
-   if (candidateForCheck.role !== "candidate") {
-  return res.status(400).json({
-    success: false,
-    message: "Selected user is not a candidate",
-  });
-}
-
-    if (!candidateForCheck.isVerified) {
-      return res.json({
-        success: false,
-        notVerified: true,
-        message: "This candidate hasn't verified their account yet",
-      });
-    }
-
-    const inter = new interviewModel({
+    const interview = new interviewModel({
       title,
-      candidate,
-      interviewer,
+      candidate: candidateForCheck._id,
+      interviewer: currentUser._id,
       language,
       questions,
       date,
@@ -126,89 +170,113 @@ const interviewer = req.user._id;
       internalNotes,
     });
 
-    await inter.save();
+    await interview.save();
 
-    currentUser.interviewsUsed += 1;
+    currentUser.interviewsUsed =
+      (currentUser.interviewsUsed || 0) + 1;
+
     await currentUser.save();
 
-    const candidateUser = candidateForCheck;
-    const interviewerUser = await userModel.findById(interviewer);
-
-    // Mail failures must NEVER fail this request - the interview is
-    // already saved at this point. A bad SMTP credential or a flaky
-    // network blip on the mail send used to bubble up into the outer
-    // catch below and report "failed" to the interviewer even though
-    // the interview had already been created.
-    // Don't await these - the response should return as soon as the
-    // interview is saved. Awaiting here means a slow/blocked SMTP
-    // connection makes the whole request (and the interviewer's
-    // browser) hang until it resolves or times out.
+    // Email failures must not fail an already-created interview.
     sendInterviewScheduledMail(
-      candidateUser.email,
-      candidateUser.name,
+      candidateForCheck.email,
+      candidateForCheck.name,
       title,
       "Interviewer",
-      interviewerUser.name,
+      currentUser.name,
       date,
       time,
       expectedDuration,
-      language,
-    ).catch((mailError) => {
-      console.log("Failed to send schedule mail to candidate:", mailError);
+      language
+    ).catch((error) => {
+      console.error("Candidate schedule email failed:", error);
     });
 
     sendInterviewScheduledMail(
-      interviewerUser.email,
-      interviewerUser.name,
+      currentUser.email,
+      currentUser.name,
       title,
       "Candidate",
-      candidateUser.name,
+      candidateForCheck.name,
       date,
       time,
       expectedDuration,
-      language,
-    ).catch((mailError) => {
-      console.log("Failed to send schedule mail to interviewer:", mailError);
+      language
+    ).catch((error) => {
+      console.error("Interviewer schedule email failed:", error);
     });
 
-    return res.json({
+    return res.status(201).json({
       success: true,
-      interview: inter,
+      interview,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Schedule interview error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to schedule interview",
     });
   }
 };
+
+// ==========================================
+// GET MY INTERVIEWS
+// ==========================================
+
 const getMyInterviews = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const field = req.user.role === "candidate" ? "candidate" : "interviewer";
+    if (!["candidate", "interviewer"].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized role",
+      });
+    }
+
+    const field =
+      req.user.role === "candidate"
+        ? "candidate"
+        : "interviewer";
 
     const interviews = await interviewModel
       .find({ [field]: userId })
       .populate("candidate", "name email avatar")
-      .populate("interviewer", "name email avatar");
+      .populate("interviewer", "name email avatar")
+      .sort({ createdAt: -1 });
 
-    res.json({
+    return res.status(200).json({
       success: true,
       interviews,
     });
   } catch (error) {
-    res.json({
+    console.error("Get my interviews error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve interviews",
     });
   }
 };
+
+// ==========================================
+// GET COMPLETED INTERVIEWS
+// ==========================================
+
 const getCompletedInterviews = async (req, res) => {
   try {
-    const field = req.user.role === "candidate" ? "candidate" : "interviewer";
+    if (!["candidate", "interviewer"].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized role",
+      });
+    }
+
+    const field =
+      req.user.role === "candidate"
+        ? "candidate"
+        : "interviewer";
 
     const interviews = await interviewModel
       .find({
@@ -216,24 +284,44 @@ const getCompletedInterviews = async (req, res) => {
         status: "completed",
       })
       .populate("candidate", "name email")
-      .populate("interviewer", "name email");
+      .populate("interviewer", "name email")
+      .sort({ createdAt: -1 });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       interviews,
     });
   } catch (error) {
-    return res.json({
+    console.error("Get completed interviews error:", error);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve completed interviews",
     });
   }
 };
 
+// ==========================================
+// CANCEL INTERVIEW
+// ==========================================
 
-  const cancelInterview = async (req, res) => {
+const cancelInterview = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid interview ID",
+      });
+    }
+
+    if (req.user.role !== "interviewer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only interviewers can cancel interviews",
+      });
+    }
 
     const interview = await interviewModel
       .findOneAndUpdate(
@@ -243,16 +331,21 @@ const getCompletedInterviews = async (req, res) => {
           status: { $in: ["scheduled", "started"] },
         },
         {
-          $set: { status: "cancelled" },
+          $set: {
+            status: "cancelled",
+          },
         },
-        { new: true }
+        {
+          new: true,
+          runValidators: true,
+        }
       )
       .populate("candidate", "name email");
 
     if (!interview) {
       return res.status(404).json({
         success: false,
-        message: "Interview not found or unauthorized",
+        message: "Interview not found, unauthorized, or already finished",
       });
     }
 
@@ -264,21 +357,35 @@ const getCompletedInterviews = async (req, res) => {
       console.error("Cancellation email failed:", error);
     });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Interview cancelled successfully",
       interview,
     });
   } catch (error) {
+    console.error("Cancel interview error:", error);
+
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to cancel interview",
     });
   }
 };
+
+// ==========================================
+// GET SINGLE INTERVIEW
+// ==========================================
+
 const getSingleInterview = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid interview ID",
+      });
+    }
 
     const interview = await interviewModel
       .findById(id)
@@ -287,44 +394,62 @@ const getSingleInterview = async (req, res) => {
       .populate("questions");
 
     if (!interview) {
-      return res.json({
+      return res.status(404).json({
         success: false,
         message: "Interview not found",
       });
     }
 
+    const userId = req.user._id.toString();
+
     const isCandidate =
-      interview.candidate._id.toString() === req.user._id.toString();
+      interview.candidate?._id?.toString() === userId;
 
     const isInterviewer =
-      interview.interviewer._id.toString() === req.user._id.toString();
+      interview.interviewer?._id?.toString() === userId;
 
     if (!isCandidate && !isInterviewer) {
-      return res.json({
+      return res.status(403).json({
         success: false,
-        message: "Unauthorized",
+        message: "Unauthorized access to this interview",
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       interview,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Get single interview error:", error);
 
-    return res.json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Unable to retrieve interview",
     });
   }
 };
 
-
+// ==========================================
+// END INTERVIEW
+// ==========================================
 
 const endInterview = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid interview ID",
+      });
+    }
+
+    if (req.user.role !== "interviewer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only interviewers can end interviews",
+      });
+    }
 
     const interview = await interviewModel
       .findOneAndUpdate(
@@ -339,14 +464,17 @@ const endInterview = async (req, res) => {
             endedAt: new Date(),
           },
         },
-        { new: true }
+        {
+          new: true,
+          runValidators: true,
+        }
       )
       .populate("candidate", "name email");
 
     if (!interview) {
       return res.status(404).json({
         success: false,
-        message: "Interview not found or unauthorized",
+        message: "Interview not found, unauthorized, or not started",
       });
     }
 
@@ -358,12 +486,13 @@ const endInterview = async (req, res) => {
       console.error("End interview email failed:", error);
     });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Interview ended successfully",
+      interview,
     });
   } catch (error) {
-    console.error(error);
+    console.error("End interview error:", error);
 
     return res.status(500).json({
       success: false,
@@ -371,9 +500,28 @@ const endInterview = async (req, res) => {
     });
   }
 };
+
+// ==========================================
+// START INTERVIEW
+// ==========================================
+
 const startInterview = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid interview ID",
+      });
+    }
+
+    if (req.user.role !== "interviewer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only interviewers can start interviews",
+      });
+    }
 
     const interview = await interviewModel
       .findOneAndUpdate(
@@ -388,14 +536,17 @@ const startInterview = async (req, res) => {
             startedAt: new Date(),
           },
         },
-        { new: true }
+        {
+          new: true,
+          runValidators: true,
+        }
       )
       .populate("candidate", "name email");
 
     if (!interview) {
       return res.status(404).json({
         success: false,
-        message: "Interview not found or unauthorized",
+        message: "Interview not found, unauthorized, or already started",
       });
     }
 
@@ -408,13 +559,13 @@ const startInterview = async (req, res) => {
       console.error("Interview start email failed:", error);
     });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: "Interview started",
+      message: "Interview started successfully",
       interview,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Start interview error:", error);
 
     return res.status(500).json({
       success: false,
@@ -422,6 +573,10 @@ const startInterview = async (req, res) => {
     });
   }
 };
+
+// ==========================================
+// EXPORTS
+// ==========================================
 
 export {
   schedule,
@@ -432,3 +587,4 @@ export {
   endInterview,
   startInterview,
 };
+
