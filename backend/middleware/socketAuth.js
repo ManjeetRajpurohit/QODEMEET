@@ -44,6 +44,13 @@ export const authorizeInterviewRoom = async (socket, roomId) => {
 
   socket.data.interviewId = roomId;
 
+socket.data.interviewRole =
+  interview.interviewer.toString() === userId
+    ? "interviewer"
+    : "candidate";
+
+return true;
+
   return true;
 };
 
