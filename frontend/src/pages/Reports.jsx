@@ -14,11 +14,7 @@ const Reports = () => {
     try {
       const response = await axios.get(
         `${import.meta.env.VITE_BACKEND_URL}/api/report`,
-        {
-          headers: {
-            token,
-          },
-        }
+        { withCredentials: true }
       );
 
       if (response.data.success) {
@@ -33,11 +29,7 @@ const Reports = () => {
     try {
       const response = await axios.get(
         `${import.meta.env.VITE_BACKEND_URL}/api/interview/completed`,
-        {
-          headers: {
-            token,
-          },
-        }
+        { withCredentials: true }
       );
 
       if (response.data.success) {
