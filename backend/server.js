@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv/config";
@@ -21,6 +22,7 @@ import reportRouter from "./Routes/reportRoute.js";
 import billingRouter from "./Routes/billingRoute.js";
 import codeRouter from "./Routes/CodeRoute.js";
 import dashboardRouter from "./Routes/dashBoardRoute.js";
+
 const port = process.env.PORT || 4000;
 
 const app = express();
@@ -36,7 +38,7 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL,
     credentials: true,
-  }),
+  })
 );
 
 app.use(passport.initialize());
@@ -50,87 +52,244 @@ const io = new Server(server, {
   },
 });
 
+// Authenticate every socket connection.
 io.use(socketAuth);
 
+// Check that socket belongs to the authorized room.
+const isAuthorizedInRoom = async (socket, roomId) => {
+  try {
+    if (
+      !roomId ||
+      typeof roomId !== "string" ||
+      !socket.data.user ||
+      socket.data.interviewId !== roomId ||
+      !socket.rooms.has(roomId)
+    ) {
+      return false;
+    }
+
+    return await authorizeInterviewRoom(socket, roomId);
+  } catch (error) {
+    console.error("Room authorization error:", error.message);
+    return false;
+  }
+};
+
 io.on("connection", (socket) => {
-  console.log(`User Connected: ${socket.id}`);
+  console.log(`Authenticated socket connected: ${socket.id}`);
 
-  socket.on("join-room", (roomId) => {
-    socket.join(roomId);
-    socket.to(roomId).emit("user-joined");
+  // JOIN ROOM
+  socket.on("join-room", async (roomId, callback) => {
+    try {
+      if (
+        socket.data.interviewId &&
+        socket.data.interviewId !== roomId
+      ) {
+        return callback?.({
+          success: false,
+          message: "Already participating in another room",
+        });
+      }
+
+      const authorized = await authorizeInterviewRoom(
+        socket,
+        roomId
+      );
+
+      if (!authorized) {
+        return callback?.({
+          success: false,
+          message: "Unauthorized interview room",
+        });
+      }
+
+      socket.join(roomId);
+
+      socket.to(roomId).emit("user-joined");
+
+      callback?.({ success: true });
+    } catch (error) {
+      console.error("Join room error:", error.message);
+
+      callback?.({
+        success: false,
+        message: "Unable to join room",
+      });
+    }
   });
 
-  socket.on("send-message", (data) => {
-    io.to(data.interviewId).emit("receive-message", data);
+  // CHAT
+  socket.on("send-message", async (data, callback) => {
+    try {
+      const roomId = data?.interviewId;
+
+      if (!(await isAuthorizedInRoom(socket, roomId))) {
+        return callback?.({ success: false });
+      }
+
+      if (
+        typeof data.message !== "string" ||
+        !data.message.trim() ||
+        data.message.length > 2000
+      ) {
+        return callback?.({ success: false });
+      }
+
+      io.to(roomId).emit("receive-message", {
+        interviewId: roomId,
+        sender: socket.data.user._id.toString(),
+        senderName: socket.data.user.name,
+        message: data.message.trim(),
+        createdAt: new Date(),
+      });
+
+      callback?.({ success: true });
+    } catch (error) {
+      console.error("Chat error:", error.message);
+      callback?.({ success: false });
+    }
   });
 
-  socket.on("code-change", (data) => {
-    socket.to(data.roomId).emit("receive-code-change", {
+  // CODE CHANGE
+  socket.on("code-change", async (data) => {
+    const roomId = data?.roomId;
+
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    if (
+      typeof data.code !== "string" ||
+      data.code.length > 100000
+    ) return;
+
+    socket.to(roomId).emit("receive-code-change", {
       code: data.code,
     });
   });
 
-  socket.on("cursor-change", (data) => {
-    socket.to(data.roomId).emit("receive-cursor-change", {
-      lineNumber: data.lineNumber,
-      column: data.column,
+  // CURSOR CHANGE
+  socket.on("cursor-change", async (data) => {
+    const roomId = data?.roomId;
+
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    socket.to(roomId).emit("receive-cursor-change", {
+      lineNumber: Number(data.lineNumber) || 1,
+      column: Number(data.column) || 1,
     });
   });
 
-  socket.on("language-change", (data) => {
-    socket.to(data.roomId).emit("receive-language-change", {
+  // LANGUAGE CHANGE
+  socket.on("language-change", async (data) => {
+    const roomId = data?.roomId;
+
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    if (
+      typeof data.language !== "string" ||
+      data.language.length > 50
+    ) return;
+
+    socket.to(roomId).emit("receive-language-change", {
       language: data.language,
     });
   });
 
-  socket.on("offer", ({ roomId, offer }) => {
-    socket.to(roomId).emit("offer", offer);
+  // WEBRTC OFFER
+  socket.on("offer", async (data) => {
+    const roomId = data?.roomId;
+
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    if (!data.offer || typeof data.offer !== "object") return;
+
+    socket.to(roomId).emit("offer", data.offer);
   });
 
-  socket.on("answer", ({ roomId, answer }) => {
-    socket.to(roomId).emit("answer", answer);
+  // WEBRTC ANSWER
+  socket.on("answer", async (data) => {
+    const roomId = data?.roomId;
+
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    if (!data.answer || typeof data.answer !== "object") return;
+
+    socket.to(roomId).emit("answer", data.answer);
   });
 
-  socket.on("ice-candidate", ({ roomId, candidate }) => {
-    socket.to(roomId).emit("ice-candidate", candidate);
+  // ICE CANDIDATE
+  socket.on("ice-candidate", async (data) => {
+    const roomId = data?.roomId;
+
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    if (!data.candidate || typeof data.candidate !== "object") return;
+
+    socket.to(roomId).emit("ice-candidate", data.candidate);
   });
 
-  socket.on("interview-ended", (roomId) => {
+  // END INTERVIEW
+  // Only the interviewer can end the interview.
+  socket.on("interview-ended", async (roomId) => {
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    if (socket.data.interviewRole !== "interviewer") {
+      return;
+    }
+
     io.to(roomId).emit("interview-ended");
   });
 
+  // SCREEN SHARE STARTED
+  socket.on("screen-share-started", async (roomId) => {
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    socket.to(roomId).emit(
+      "screen-share-started",
+      socket.id
+    );
+  });
+
+  // SCREEN SHARE STOPPED
+  socket.on("screen-share-stopped", async (roomId) => {
+    if (!(await isAuthorizedInRoom(socket, roomId))) return;
+
+    socket.to(roomId).emit(
+      "screen-share-stopped",
+      socket.id
+    );
+  });
+
+  // LEAVE ROOM
   socket.on("leave-room", (roomId) => {
-    socket.leave(roomId);
+    if (
+      !roomId ||
+      socket.data.interviewId !== roomId ||
+      !socket.rooms.has(roomId)
+    ) return;
+
     socket.to(roomId).emit("user-left");
+
+    socket.leave(roomId);
+
+    socket.data.interviewId = null;
+    socket.data.interviewRole = null;
   });
 
+  // DISCONNECT
   socket.on("disconnecting", () => {
-    socket.rooms.forEach((roomId) => {
-      if (roomId !== socket.id) {
-        socket.to(roomId).emit("user-left");
-      }
-    });
-  });
-  socket.on("screen-share-started", (roomId) => {
-    io.to(roomId).emit(
-    "screen-share-started",
-    socket.id
-);
-  });
+    const roomId = socket.data.interviewId;
 
-  socket.on("screen-share-stopped", (roomId) => {
-    io.to(roomId).emit(
-    "screen-share-stopped",
-    socket.id
-);
+    if (roomId && socket.rooms.has(roomId)) {
+      socket.to(roomId).emit("user-left");
+    }
   });
 
   socket.on("disconnect", () => {
-    console.log(`User Disconnected: ${socket.id}`);
+    console.log(`Socket disconnected: ${socket.id}`);
   });
 });
 
-// Routes
+// ROUTES
 app.use("/api/auth", googleRouter);
 app.use("/api/user", userRouter);
 app.use("/api/question", questionRouter);
@@ -139,10 +298,11 @@ app.use("/api/report", reportRouter);
 app.use("/api/bill", billingRouter);
 app.use("/api/code", codeRouter);
 app.use("/api/dashboard", dashboardRouter);
-// Database Connection
+
+// DATABASE
 connectDB();
 
-// Server Start
+// SERVER
 server.listen(port, "0.0.0.0", () => {
   console.log(`Server is running on port ${port}`);
 });
