@@ -28,7 +28,7 @@ userRouter.post("/send-verification", userAuth, sendVerificationOtp);
 userRouter.post("/verify-account", userAuth, verifyAccount);
 
 userRouter.get("/me", userAuth, getCurrentUser);
-userRouter.get("/get-email", getUserbyemail);
+userRouter.get("/get-email", userAuth, getUserbyemail);
 userRouter.get("/subscription", userAuth, getSubscription);
 
 userRouter.post(
