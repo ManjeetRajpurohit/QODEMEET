@@ -61,9 +61,11 @@ const handleLogin = async (req, res) => {
       });
     }
 
-    const user = await userModel.findOne({
-      username: username.toLowerCase().trim(),
-    });
+ const user = await userModel
+  .findOne({
+    username: username.toLowerCase().trim(),
+  })
+  .select("+password");
 
     if (!user || !user.password) {
       return res.status(401).json({
@@ -293,7 +295,9 @@ const selectRole = async (req, res) => {
 
 const sendVerificationOtp = async (req, res) => {
   try {
-    const user = await userModel.findById(req.user._id);
+   const user = await userModel
+  .findById(req.user._id)
+  .select("+otp +otpExpiry");
 
     if (!user) {
       return res.status(404).json({
@@ -372,7 +376,9 @@ const verifyAccount = async (req, res) => {
       });
     }
 
-    const user = await userModel.findById(req.user._id);
+   const user = await userModel
+  .findById(req.user._id)
+  .select("+otp +otpExpiry");
 
     if (!user) {
       return res.status(404).json({
