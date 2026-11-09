@@ -49,13 +49,10 @@ const InterviewRoom = () => {
 
   const socket = useMemo(
   () =>
-    io(backendUrl, {
-      transports: ["websocket"],
-      auth: {
-        token,
-      },
-    }),
-  [backendUrl, token],
+io(backendUrl, {
+  transports: ["websocket"],
+  withCredentials: true,
+})  [backendUrl, token],
 );
 
   const {
