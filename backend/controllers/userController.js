@@ -92,10 +92,17 @@ const handleLogin = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    return res.status(200).json({
-      success: true,
-      token,
-    });
+   res.cookie("qodemeet_token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/",
+});
+
+return res.status(200).json({
+  success: true,
+});
   } catch (error) {
     console.error("Login error:", error);
 
@@ -218,10 +225,17 @@ const handleRegister = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    return res.status(201).json({
-      success: true,
-      token,
-    });
+    res.cookie("qodemeet_token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/",
+});
+
+return res.status(200).json({
+  success: true,
+});
   } catch (error) {
     console.error("Registration error:", error);
 
