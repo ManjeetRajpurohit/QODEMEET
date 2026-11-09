@@ -29,10 +29,9 @@ const Login = () => {
   role,
 });
       if (response.data.success) {
-        localStorage.setItem("token", response.data.token);
-
-        setToken(response.data.token);
-
+      const userResponse = await api.get("/api/user/me");
+setUser(userResponse.data.user);
+setToken(true);
         toast.success("Login Successful");
 
         setRole("candidate");
