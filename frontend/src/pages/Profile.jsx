@@ -150,11 +150,7 @@ const Profile = () => {
       const response = await axios.post(
         import.meta.env.VITE_BACKEND_URL + "/api/user/update",
         formData,
-        {
-          headers: {
-            token,
-          },
-        },
+        { withCredentials: true },
       );
 
       if (response.data.success) {
