@@ -13,7 +13,9 @@ const userAuth = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
 
     if (!decoded?.id || !mongoose.isValidObjectId(decoded.id)) {
       return res.status(401).json({
@@ -24,7 +26,14 @@ const userAuth = async (req, res, next) => {
 
     const user = await userModel.findById(decoded.id);
 
-    if (!user || !["candidate", "interviewer"].includes(user.role)) {
+    if (!user || decoded.tokenVersion !== (user.tokenVersion ?? 0)) {
+      return res.status(401).json({
+        success: false,
+        message: "Session expired. Please login again.",
+      });
+    }
+
+    if (!["candidate", "interviewer"].includes(user.role)) {
       return res.status(401).json({
         success: false,
         message: "User session is no longer valid",
