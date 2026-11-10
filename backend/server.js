@@ -28,6 +28,10 @@ const port = process.env.PORT || 4000;
 const app = express();
 const server = createServer(app);
 
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET must be configured before the server starts");
+}
+
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 // Middleware
@@ -74,6 +78,7 @@ const io = new Server(server, {
   },
 });
 io.engine.use(parseCookies);
+app.set("io", io);
 // Authenticate every socket connection.
 io.use(socketAuth);
 
@@ -98,6 +103,7 @@ const isAuthorizedInRoom = async (socket, roomId) => {
 };
 
 io.on("connection", (socket) => {
+  socket.join(`user:${socket.data.user._id.toString()}`);
   console.log(`Authenticated socket connected: ${socket.id}`);
 
   // JOIN ROOM

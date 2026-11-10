@@ -11,17 +11,32 @@ const socketAuth = async (socket, next) => {
       return next(new Error("Authentication required"));
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+    if (!process.env.JWT_SECRET) {
+      return next(new Error("Authentication service unavailable"));
+    }
 
-    if (!decoded?.id || !mongoose.isValidObjectId(decoded.id)) {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
+
+    if (
+      !decoded?.id ||
+      !mongoose.isValidObjectId(decoded.id) ||
+      !Number.isSafeInteger(decoded.tokenVersion) ||
+      decoded.tokenVersion < 0
+    ) {
       return next(new Error("Invalid authentication token"));
     }
 
     const user = await userModel
       .findById(decoded.id)
-      .select("_id name role");
+      .select("_id name role tokenVersion");
 
-    if (!user || !["candidate", "interviewer"].includes(user.role)) {
+    if (
+      !user ||
+      decoded.tokenVersion !== (user.tokenVersion ?? 0) ||
+      !["candidate", "interviewer"].includes(user.role)
+    ) {
       return next(new Error("User not authorized"));
     }
 

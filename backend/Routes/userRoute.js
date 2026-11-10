@@ -9,12 +9,15 @@ import {
   logout,
   updateuser,
   getUserbyemail,
-  getSubscription
+  getSubscription,
+  requestPasswordResetOtp,
+  verifyPasswordResetOtp,
+  resetPassword,
 } from "../controllers/userController.js";
 
 import requireInterviewer from "../middleware/requireInterviewer.js";
 
-import userAuth from "../middleware/userAuth.js";
+import userAuth, { userAuthAllowUnassigned } from "../middleware/userAuth.js";
 import upload from "../middleware/multer.js";
 
 const userRouter = express.Router();
@@ -23,14 +26,18 @@ userRouter.post("/login", handleLogin);
 
 userRouter.post("/register", handleRegister);
 
-userRouter.post("/select-role", userAuth, selectRole);
-userRouter.post("/logout", logout);
+userRouter.post("/forgot-password/send-otp", requestPasswordResetOtp);
+userRouter.post("/forgot-password/verify-otp", verifyPasswordResetOtp);
+userRouter.post("/forgot-password/reset", resetPassword);
+
+userRouter.post("/select-role", userAuthAllowUnassigned, selectRole);
+userRouter.post("/logout", userAuthAllowUnassigned, logout);
 // Verification now happens from the profile page, once the user is
 // already logged in - both routes act on the authenticated account.
 userRouter.post("/send-verification", userAuth, sendVerificationOtp);
 userRouter.post("/verify-account", userAuth, verifyAccount);
 
-userRouter.get("/me", userAuth, getCurrentUser);
+userRouter.get("/me", userAuthAllowUnassigned, getCurrentUser);
 userRouter.get(
   "/get-email",
   userAuth,

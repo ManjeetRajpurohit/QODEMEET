@@ -75,6 +75,43 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    tokenVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    passwordResetOtp: {
+      type: String,
+      default: null,
+      select: false,
+    },
+
+    passwordResetOtpExpiry: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+
+    passwordResetAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
+    },
+
+    passwordResetTokenHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
+
+    passwordResetTokenExpiry: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+
     phoneNumber: {
       type: String,
       default: "",

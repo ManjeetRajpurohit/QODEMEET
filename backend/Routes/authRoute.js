@@ -26,10 +26,12 @@ googleRouter.get(
           id: req.user._id,
           email: req.user.email,
           role: req.user.role,
+          tokenVersion: req.user.tokenVersion ?? 0,
         },
         process.env.JWT_SECRET,
         {
           expiresIn: "7d",
+          algorithm: "HS256",
         }
       );
 

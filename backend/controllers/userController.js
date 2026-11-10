@@ -8,6 +8,7 @@ import crypto from "crypto";
 import imagekit from "../config/imagekit.js";
 import sendOtpMail from "../utils/sendOtpMail.js";
 import sendWelcomeMail from "../utils/sendWelcomeMail.js";
+import transporter from "../config/mail.js";
 import cookieOptions from "../config/cookieOptions.js";
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
@@ -88,9 +89,9 @@ const handleLogin = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, tokenVersion: user.tokenVersion ?? 0 },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d", algorithm: "HS256" }
     );
 
    res.cookie("qodemeet_token", token, cookieOptions);
@@ -215,9 +216,9 @@ const handleRegister = async (req, res) => {
     });
 
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, tokenVersion: user.tokenVersion ?? 0 },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d", algorithm: "HS256" }
     );
 
     res.cookie("qodemeet_token", token, cookieOptions);
@@ -460,13 +461,205 @@ const getCurrentUser = async (req, res) => {
   }
 };
 const logout = async (req, res) => {
-  const { maxAge, ...clearOptions } = cookieOptions;
-  res.clearCookie("qodemeet_token", clearOptions);
+  try {
+    const result = await userModel.updateOne(
+      { _id: req.user._id },
+      { $inc: { tokenVersion: 1 } }
+    );
 
-  return res.status(200).json({
-    success: true,
-    message: "Logged out successfully",
-  });
+    if (result.matchedCount !== 1) {
+      return res.status(401).json({
+        success: false,
+        message: "Session is no longer valid",
+      });
+    }
+
+    const io = req.app.get("io");
+    io?.in(`user:${req.user._id.toString()}`).disconnectSockets(true);
+
+    const { maxAge, ...clearOptions } = cookieOptions;
+    res.clearCookie("qodemeet_token", clearOptions);
+
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Unable to logout",
+    });
+  }
+};
+
+// ==========================================
+// PASSWORD RESET
+// ==========================================
+
+const requestPasswordResetOtp = async (req, res) => {
+  try {
+    const email = typeof req.body?.email === "string"
+      ? req.body.email.trim().toLowerCase()
+      : "";
+
+    if (!validator.isEmail(email)) {
+      return res.status(400).json({ success: false, message: "Enter a valid email address" });
+    }
+
+    const genericResponse = {
+      success: true,
+      message: "If the account exists, a password reset code has been sent.",
+    };
+    const user = await userModel.findOne({ email });
+
+    if (!user || !user.password) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Do not repeatedly email reset codes while a previous code is active.
+    if (
+      user.passwordResetOtpExpiry &&
+      user.passwordResetOtpExpiry.getTime() > Date.now()
+    ) {
+      return res.status(200).json(genericResponse);
+    }
+
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    user.passwordResetOtp = await bcrypt.hash(otp, 10);
+    user.passwordResetOtpExpiry = new Date(Date.now() + OTP_EXPIRY_MS);
+    user.passwordResetAttempts = 0;
+    user.passwordResetTokenHash = null;
+    user.passwordResetTokenExpiry = null;
+    await user.save();
+
+    try {
+      await transporter.sendMail({
+        to: user.email,
+        subject: "Your QodeMeet password reset code",
+        html: `<div style="font-family:Arial,sans-serif"><h2>Password reset</h2><p>Your QodeMeet reset code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:5px">${otp}</p><p>This code expires in 10 minutes. If you did not request this, ignore this email.</p></div>`,
+      });
+    } catch (mailError) {
+      user.passwordResetOtp = null;
+      user.passwordResetOtpExpiry = null;
+      await user.save();
+      console.error("Password reset email failed:", mailError.message);
+      return res.status(503).json({ success: false, message: "Unable to send reset code. Please try again." });
+    }
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error("Request password reset error:", error);
+    return res.status(500).json({ success: false, message: "Unable to process password reset" });
+  }
+};
+
+const verifyPasswordResetOtp = async (req, res) => {
+  try {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const otp = req.body?.otp;
+
+    if (!validator.isEmail(email) || typeof otp !== "string" || !/^\\d{6}$/.test(otp)) {
+      return res.status(400).json({ success: false, message: "Enter a valid email and six-digit code" });
+    }
+
+    const user = await userModel.findOne({ email }).select(
+      "+passwordResetOtp +passwordResetOtpExpiry +passwordResetAttempts"
+    );
+
+    if (
+      !user ||
+      !user.passwordResetOtp ||
+      !user.passwordResetOtpExpiry ||
+      user.passwordResetOtpExpiry.getTime() < Date.now() ||
+      user.passwordResetAttempts >= 5
+    ) {
+      return res.status(400).json({ success: false, message: "Invalid or expired reset code" });
+    }
+
+    const validOtp = await bcrypt.compare(otp, user.passwordResetOtp);
+    if (!validOtp) {
+      user.passwordResetAttempts += 1;
+      if (user.passwordResetAttempts >= 5) {
+        user.passwordResetOtp = null;
+        user.passwordResetOtpExpiry = null;
+      }
+      await user.save();
+      return res.status(400).json({ success: false, message: "Invalid or expired reset code" });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    user.passwordResetOtp = null;
+    user.passwordResetOtpExpiry = null;
+    user.passwordResetAttempts = 0;
+    user.passwordResetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+    user.passwordResetTokenExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      resetToken,
+      message: "Code verified. You can now reset your password.",
+    });
+  } catch (error) {
+    console.error("Verify password reset OTP error:", error);
+    return res.status(500).json({ success: false, message: "Unable to verify reset code" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body || {};
+
+    if (
+      typeof email !== "string" ||
+      !validator.isEmail(email.trim()) ||
+      typeof resetToken !== "string" ||
+      !/^[a-f0-9]{64}$/i.test(resetToken) ||
+      typeof newPassword !== "string" ||
+      newPassword.length < 8 ||
+      Buffer.byteLength(newPassword, "utf8") > 72
+    ) {
+      return res.status(400).json({ success: false, message: "Invalid reset details or password (minimum 8 characters)" });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const user = await userModel.findOneAndUpdate(
+      {
+        email: email.trim().toLowerCase(),
+        passwordResetTokenHash: tokenHash,
+        passwordResetTokenExpiry: { $gt: new Date() },
+      },
+      {
+        $set: {
+          password: passwordHash,
+          passwordResetTokenHash: null,
+          passwordResetTokenExpiry: null,
+          passwordResetOtp: null,
+          passwordResetOtpExpiry: null,
+          passwordResetAttempts: 0,
+        },
+        $inc: { tokenVersion: 1 },
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: "Reset session is invalid or expired. Request a new code." });
+    }
+
+    const io = req.app.get("io");
+    io?.in(`user:${user._id.toString()}`).disconnectSockets(true);
+
+    const { maxAge, ...clearOptions } = cookieOptions;
+    res.clearCookie("qodemeet_token", clearOptions);
+
+    return res.status(200).json({ success: true, message: "Password reset successfully. Please login again." });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({ success: false, message: "Unable to reset password" });
+  }
 };
 
 // ==========================================
@@ -830,4 +1023,7 @@ export {
   updateuser,
   getUserbyemail,
   getSubscription,
+  requestPasswordResetOtp,
+  verifyPasswordResetOtp,
+  resetPassword,
 };
