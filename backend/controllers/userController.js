@@ -472,13 +472,28 @@ const getCurrentUser = async (req, res) => {
   }
 };
 const logout = async (req, res) => {
-  const { maxAge, ...clearOptions } = cookieOptions;
-  res.clearCookie("qodemeet_token", clearOptions);
+  try {
+    await userModel.updateOne(
+      { _id: req.user._id },
+      { $inc: { tokenVersion: 1 } }
+    );
 
-  return res.status(200).json({
-    success: true,
-    message: "Logged out successfully",
-  });
+    const { maxAge, ...clearOptions } = cookieOptions;
+
+    res.clearCookie("qodemeet_token", clearOptions);
+
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to logout",
+    });
+  }
 };
 
 // ==========================================
