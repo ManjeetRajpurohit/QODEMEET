@@ -19,9 +19,15 @@ const socketAuth = async (socket, next) => {
 
     const user = await userModel
       .findById(decoded.id)
-      .select("_id name role");
+.select("_id name role tokenVersion");
+    if (
+  !user ||
+  decoded.tokenVersion !== (user.tokenVersion ?? 0)
+) {
+  return next(new Error("Session expired"));
+}
 
-    if (!user || !["candidate", "interviewer"].includes(user.role)) {
+    if (!["candidate", "interviewer"].includes(user.role)) {
       return next(new Error("User not authorized"));
     }
 
