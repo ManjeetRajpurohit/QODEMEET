@@ -159,7 +159,11 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
+  tokenVersion: {
+  type: Number,
+  default: 0,
+},
 );
 
 const userModel = mongoose.model("User", userSchema);
