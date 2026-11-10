@@ -88,9 +88,15 @@ const handleLogin = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      {
+  id: user._id,
+  tokenVersion: user.tokenVersion,
+},
+process.env.JWT_SECRET,
+{
+  expiresIn: "7d",
+  algorithm: "HS256",
+}
     );
 
    res.cookie("qodemeet_token", token, cookieOptions);
@@ -215,9 +221,15 @@ const handleRegister = async (req, res) => {
     });
 
     const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+     {
+  id: user._id,
+  tokenVersion: user.tokenVersion,
+},
+process.env.JWT_SECRET,
+{
+  expiresIn: "7d",
+  algorithm: "HS256",
+}
     );
 
     res.cookie("qodemeet_token", token, cookieOptions);
