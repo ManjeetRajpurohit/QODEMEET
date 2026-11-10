@@ -24,7 +24,7 @@ userRouter.post("/login", handleLogin);
 userRouter.post("/register", handleRegister);
 
 userRouter.post("/select-role", userAuth, selectRole);
-userRouter.post("/logout", logout);
+userRouter.post("/logout", userAuth, logout);
 // Verification now happens from the profile page, once the user is
 // already logged in - both routes act on the authenticated account.
 userRouter.post("/send-verification", userAuth, sendVerificationOtp);
