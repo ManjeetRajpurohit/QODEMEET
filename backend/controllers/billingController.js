@@ -5,6 +5,7 @@ import crypto from "crypto";
 import sendSubscriptionMail from "../utils/sendSubscriptionMail.js";
 import userModel from "../models/userModel.js";
 import mongoose from "mongoose";
+import applySubscription from "../utils/applySubscription.js";
 
 const razorpayInstance = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -16,12 +17,6 @@ const PLAN_PRICES = {
   Pro: 9,
   Enterprise: 29,
   Annual: 99,
-};
-
-const PLAN_DURATION = {
-  Pro: 30,
-  Enterprise: 30,
-  Annual: 365,
 };
 
 // ==========================================
@@ -98,7 +93,10 @@ const razorpayBill = async (req, res) => {
   try {
     const { plan } = req.body || {};
 
-    if (!Object.hasOwn(PLAN_PRICES, plan)) {
+    if (
+      typeof plan !== "string" ||
+      !Object.hasOwn(PLAN_PRICES, plan)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid subscription plan",
@@ -125,7 +123,6 @@ const razorpayBill = async (req, res) => {
     }
 
     const amount = PLAN_PRICES[plan];
-
     const receipt = `bill_${crypto.randomUUID()}`;
 
     const order = await razorpayInstance.orders.create({
@@ -206,7 +203,7 @@ const verifyBill = async (req, res) => {
       });
     }
 
-    // Prevent duplicate payment processing.
+    // Idempotency: don't activate an already-paid order again.
     if (existingBill.status === "paid") {
       if (existingBill.paymentId === razorpay_payment_id) {
         return res.status(200).json({
@@ -229,7 +226,7 @@ const verifyBill = async (req, res) => {
       });
     }
 
-    // Verify HMAC signature.
+    // Verify Razorpay payment signature.
     const generatedSignature = crypto
       .createHmac(
         "sha256",
@@ -264,7 +261,7 @@ const verifyBill = async (req, res) => {
       });
     }
 
-    // Fetch order directly from Razorpay.
+    // Verify the order directly with Razorpay.
     const razorpayOrder =
       await razorpayInstance.orders.fetch(
         razorpay_order_id
@@ -281,7 +278,7 @@ const verifyBill = async (req, res) => {
       });
     }
 
-    // Verify payment directly with Razorpay.
+    // Verify the payment directly with Razorpay.
     const payment =
       await razorpayInstance.payments.fetch(
         razorpay_payment_id
@@ -299,17 +296,20 @@ const verifyBill = async (req, res) => {
       });
     }
 
-    // Commit the paid bill and subscription activation together. This
-    // prevents a paid order from being recorded without its entitlement.
+    // Atomically claim the order and activate the subscription.
     const session = await mongoose.startSession();
+
     let bill = null;
-    let activationError = null;
 
     try {
       await session.withTransaction(async () => {
-        bill = await billingModel.findOneAndUpdate(
+        // Reset this on transaction retries.
+        bill = null;
+
+        const claimedBill = await billingModel.findOneAndUpdate(
           {
             _id: existingBill._id,
+            orderId: razorpay_order_id,
             userId: req.user._id,
             status: "created",
           },
@@ -327,79 +327,73 @@ const verifyBill = async (req, res) => {
           }
         );
 
-        if (!bill) {
+        // The webhook or another verification request may have won.
+        if (!claimedBill) {
           return;
         }
 
-        const user = await userModel.findById(bill.userId).session(session);
+        const user = await userModel
+          .findById(claimedBill.userId)
+          .session(session);
 
         if (!user) {
-          throw new Error("Paid bill has no associated user");
-        }
-
-        const now = new Date();
-        const durationDays = PLAN_DURATION[bill.plan];
-
-        if (!durationDays) {
-          throw new Error("Invalid subscription duration");
-        }
-
-        const expiryDate = new Date(
-          now.getTime() + durationDays * 24 * 60 * 60 * 1000
-        );
-
-        const isExpired =
-          !user.subscriptionExpiry ||
-          user.subscriptionExpiry < now;
-
-        if (user.subscriptionPlan === "Free" || isExpired) {
-          user.subscriptionPlan = bill.plan;
-          user.subscriptionExpiry = expiryDate;
-          user.interviewsUsed = 0;
-          user.billingCycleStart = now;
-          user.upcomingPlan = null;
-          user.upcomingPlanExpiry = null;
-        } else if (user.subscriptionPlan === bill.plan) {
-          user.upcomingPlan = bill.plan;
-          user.upcomingPlanExpiry = new Date(
-            user.subscriptionExpiry.getTime() +
-              durationDays * 24 * 60 * 60 * 1000
+          throw new Error(
+            "Paid bill has no associated user"
           );
-        } else {
-          user.subscriptionPlan = bill.plan;
-          user.subscriptionExpiry = expiryDate;
-          user.interviewsUsed = 0;
-          user.billingCycleStart = now;
-          user.upcomingPlan = null;
-          user.upcomingPlanExpiry = null;
         }
+
+        applySubscription(user, claimedBill);
 
         await user.save({ session });
+
+        bill = claimedBill;
       });
-    } catch (error) {
-      activationError = error;
     } finally {
       await session.endSession();
     }
 
-    if (activationError) {
-      throw activationError;
-    }
-
+    // If another payment path won, inspect the committed bill.
     if (!bill) {
+      const latestBill = await billingModel.findOne({
+        _id: existingBill._id,
+        userId: req.user._id,
+      });
+
+      if (
+        latestBill?.status === "paid" &&
+        latestBill.paymentId === razorpay_payment_id
+      ) {
+        return res.status(200).json({
+          success: true,
+          message: "Payment already verified",
+          bill: latestBill,
+        });
+      }
+
       return res.status(409).json({
         success: false,
         message: "Payment order has already been processed",
       });
     }
 
+    // Fetch the user after the transaction commits.
     const user = await userModel.findById(bill.userId);
 
     if (!user) {
-      throw new Error("Subscription user missing after payment transaction");
+      console.error(
+        "Subscription user missing after payment transaction:",
+        bill.userId
+      );
+
+      // Payment is already committed. Do not report it as unpaid.
+      return res.status(200).json({
+        success: true,
+        message: "Payment successful",
+        bill,
+      });
     }
 
-    // Send confirmation email without blocking payment response.
+    // Send confirmation email without blocking the payment response.
     sendSubscriptionMail(
       user.email,
       user.name,
@@ -428,7 +422,8 @@ const verifyBill = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Unable to verify payment. Contact support if money was deducted.",
+      message:
+        "Unable to verify payment. Contact support if money was deducted.",
     });
   }
 };

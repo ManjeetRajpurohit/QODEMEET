@@ -16,6 +16,7 @@ const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 const ALLOWED_ROLES = ["candidate", "interviewer"];
 
 // Remove private fields before returning user data.
+
 const sanitizeUser = (user) => {
   if (!user) return null;
 
@@ -23,10 +24,24 @@ const sanitizeUser = (user) => {
     ? user.toObject()
     : { ...user };
 
-  delete safeUser.password;
-  delete safeUser.otp;
-  delete safeUser.otpExpiry;
-  delete safeUser.__v;
+  const sensitiveFields = [
+    "password",
+    "googleId",
+    "otp",
+    "otpExpiry",
+    "otpAttempts",
+    "tokenVersion",
+    "passwordResetOtp",
+    "passwordResetOtpExpiry",
+    "passwordResetAttempts",
+    "passwordResetTokenHash",
+    "passwordResetTokenExpiry",
+    "__v",
+  ];
+
+  for (const field of sensitiveFields) {
+    delete safeUser[field];
+  }
 
   return safeUser;
 };
@@ -42,6 +57,80 @@ const parseField = (value, fallback) => {
   }
 
   return JSON.parse(value);
+};
+
+const parseProfileObject = (value, allowedFields, maxLength = 200) => {
+  const parsed = parseField(value, {});
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error("Invalid profile data");
+  }
+
+  const result = {};
+
+  for (const [key, fieldValue] of Object.entries(parsed)) {
+    if (!allowedFields.includes(key)) {
+      throw new Error(`Invalid profile field: ${key}`);
+    }
+
+    if (
+      typeof fieldValue !== "string" ||
+      fieldValue.length > maxLength
+    ) {
+      throw new Error(`Invalid value for ${key}`);
+    }
+
+    result[key] = fieldValue.trim();
+  }
+
+  return result;
+};
+
+const isValidImageBuffer = (buffer) => {
+  if (!Buffer.isBuffer(buffer)) return false;
+
+  // JPEG
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff
+  ) return true;
+
+  // PNG
+  if (
+    buffer.length >= 8 &&
+    buffer.subarray(0, 8).equals(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+    )
+  ) return true;
+
+  // GIF
+  if (
+    buffer.length >= 6 &&
+    ["GIF87a", "GIF89a"].includes(buffer.toString("ascii", 0, 6))
+  ) return true;
+
+  // WEBP
+  if (
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) return true;
+
+  return false;
+};
+
+const isValidPdfBuffer = (buffer) => {
+  return (
+    Buffer.isBuffer(buffer) &&
+    buffer.length >= 5 &&
+    buffer.toString("ascii", 0, 5) === "%PDF-"
+  );
 };
 
 // ==========================================
@@ -63,11 +152,11 @@ const handleLogin = async (req, res) => {
       });
     }
 
- const user = await userModel
-  .findOne({
-    username: username.toLowerCase().trim(),
-  })
-  .select("+password");
+    const user = await userModel
+      .findOne({
+        username: username.toLowerCase().trim(),
+      })
+      .select("+password");
 
     if (!user || !user.password) {
       return res.status(401).json({
@@ -94,11 +183,11 @@ const handleLogin = async (req, res) => {
       { expiresIn: "7d", algorithm: "HS256" }
     );
 
-   res.cookie("qodemeet_token", token, cookieOptions);
+    res.cookie("qodemeet_token", token, cookieOptions);
 
-return res.status(200).json({
-  success: true,
-});
+    return res.status(200).json({
+      success: true,
+    });
   } catch (error) {
     console.error("Login error:", error);
 
@@ -223,9 +312,9 @@ const handleRegister = async (req, res) => {
 
     res.cookie("qodemeet_token", token, cookieOptions);
 
-return res.status(200).json({
-  success: true,
-});
+    return res.status(200).json({
+      success: true,
+    });
   } catch (error) {
     console.error("Registration error:", error);
 
@@ -299,35 +388,56 @@ const selectRole = async (req, res) => {
 
 const sendVerificationOtp = async (req, res) => {
   try {
-   const user = await userModel
-  .findById(req.user._id)
-  .select("+otp +otpExpiry");
+    const userId = req.user._id;
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const otpHash = await bcrypt.hash(otp, 10);
+    const now = new Date();
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Account already verified",
-      });
-    }
-
-    const otp = crypto
-      .randomInt(100000, 1000000)
-      .toString();
-
-    // Store a hash rather than the plaintext OTP.
-    user.otp = await bcrypt.hash(otp, 10);
-    user.otpExpiry = new Date(
-      Date.now() + OTP_EXPIRY_MS
+    // Atomically claim the right to issue a new OTP.
+    const user = await userModel.findOneAndUpdate(
+      {
+        _id: userId,
+        isVerified: false,
+        $or: [
+          { otpExpiry: null },
+          { otpExpiry: { $exists: false } },
+          { otpExpiry: { $lte: now } },
+        ],
+      },
+      {
+        $set: {
+          otp: otpHash,
+          otpExpiry: new Date(now.getTime() + OTP_EXPIRY_MS),
+          otpAttempts: 0,
+        },
+      },
+      { new: true }
     );
 
-    await user.save();
+    if (!user) {
+      const existingUser = await userModel
+        .findById(userId)
+        .select("+otpExpiry");
+
+      if (!existingUser) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      if (existingUser.isVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "Account already verified",
+        });
+      }
+
+      return res.status(429).json({
+        success: false,
+        message: "A verification code is already active. Please use it or wait until it expires.",
+      });
+    }
 
     try {
       await sendOtpMail({
@@ -336,9 +446,17 @@ const sendVerificationOtp = async (req, res) => {
         otp,
       });
     } catch (mailError) {
-      user.otp = null;
-      user.otpExpiry = null;
-      await user.save();
+      // Only clear the OTP created by this request.
+      await userModel.updateOne(
+        { _id: user._id, otp: otpHash },
+        {
+          $set: {
+            otp: null,
+            otpExpiry: null,
+            otpAttempts: 0,
+          },
+        }
+      );
 
       console.error("OTP email failed:", mailError);
 
@@ -370,19 +488,16 @@ const verifyAccount = async (req, res) => {
   try {
     const { otp } = req.body || {};
 
-    if (
-      typeof otp !== "string" ||
-      !/^\d{6}$/.test(otp)
-    ) {
+    if (typeof otp !== "string" || !/^\d{6}$/.test(otp)) {
       return res.status(400).json({
         success: false,
         message: "Enter a valid six-digit verification code",
       });
     }
 
-   const user = await userModel
-  .findById(req.user._id)
-  .select("+otp +otpExpiry");
+    const user = await userModel
+      .findById(req.user._id)
+      .select("+otp +otpExpiry +otpAttempts");
 
     if (!user) {
       return res.status(404).json({
@@ -398,34 +513,83 @@ const verifyAccount = async (req, res) => {
       });
     }
 
+    const now = new Date();
+    const otpHash = user.otp;
+
     if (
-      !user.otp ||
+      !otpHash ||
       !user.otpExpiry ||
-      user.otpExpiry.getTime() < Date.now()
+      user.otpExpiry <= now ||
+      user.otpAttempts >= 5
     ) {
       return res.status(400).json({
         success: false,
-        message: "Code expired. Please request a new one.",
+        message: "Code expired or invalid. Please request a new one.",
       });
     }
 
-    const isValidOtp = await bcrypt.compare(
-      otp,
-      user.otp
-    );
+    const isValidOtp = await bcrypt.compare(otp, otpHash);
+
+    // Match the exact OTP hash so an old request cannot modify a newer OTP.
+    const activeOtpFilter = {
+      _id: user._id,
+      isVerified: false,
+      otp: otpHash,
+      otpExpiry: { $gt: now },
+      $or: [
+        { otpAttempts: { $lt: 5 } },
+        { otpAttempts: { $exists: false } },
+      ],
+    };
 
     if (!isValidOtp) {
+      const attemptResult = await userModel.updateOne(
+        activeOtpFilter,
+        { $inc: { otpAttempts: 1 } }
+      );
+
+      if (attemptResult.modifiedCount === 1) {
+        await userModel.updateOne(
+          {
+            _id: user._id,
+            otp: otpHash,
+            otpAttempts: { $gte: 5 },
+          },
+          {
+            $set: {
+              otp: null,
+              otpExpiry: null,
+            },
+          }
+        );
+      }
+
       return res.status(400).json({
         success: false,
         message: "Invalid verification code",
       });
     }
 
-    user.isVerified = true;
-    user.otp = null;
-    user.otpExpiry = null;
+    // Consume the OTP and verify the account in one atomic operation.
+    const verifiedUser = await userModel.findOneAndUpdate(
+      activeOtpFilter,
+      {
+        $set: {
+          isVerified: true,
+          otp: null,
+          otpExpiry: null,
+          otpAttempts: 0,
+        },
+      },
+      { new: true }
+    );
 
-    await user.save();
+    if (!verifiedUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Code expired or already used. Please request a new one.",
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -460,6 +624,7 @@ const getCurrentUser = async (req, res) => {
     });
   }
 };
+
 const logout = async (req, res) => {
   try {
     const result = await userModel.updateOne(
@@ -486,6 +651,7 @@ const logout = async (req, res) => {
     });
   } catch (error) {
     console.error("Logout error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Unable to logout",
@@ -504,34 +670,47 @@ const requestPasswordResetOtp = async (req, res) => {
       : "";
 
     if (!validator.isEmail(email)) {
-      return res.status(400).json({ success: false, message: "Enter a valid email address" });
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid email address",
+      });
     }
 
     const genericResponse = {
       success: true,
       message: "If the account exists, a password reset code has been sent.",
     };
-    const user = await userModel.findOne({ email });
-
-    if (!user || !user.password) {
-      return res.status(200).json(genericResponse);
-    }
-
-    // Do not repeatedly email reset codes while a previous code is active.
-    if (
-      user.passwordResetOtpExpiry &&
-      user.passwordResetOtpExpiry.getTime() > Date.now()
-    ) {
-      return res.status(200).json(genericResponse);
-    }
 
     const otp = crypto.randomInt(100000, 1000000).toString();
-    user.passwordResetOtp = await bcrypt.hash(otp, 10);
-    user.passwordResetOtpExpiry = new Date(Date.now() + OTP_EXPIRY_MS);
-    user.passwordResetAttempts = 0;
-    user.passwordResetTokenHash = null;
-    user.passwordResetTokenExpiry = null;
-    await user.save();
+    const otpHash = await bcrypt.hash(otp, 10);
+    const now = new Date();
+
+    // A second concurrent request cannot overwrite an active reset OTP.
+    const user = await userModel.findOneAndUpdate(
+      {
+        email,
+        password: { $exists: true, $ne: null },
+        $or: [
+          { passwordResetOtpExpiry: null },
+          { passwordResetOtpExpiry: { $exists: false } },
+          { passwordResetOtpExpiry: { $lte: now } },
+        ],
+      },
+      {
+        $set: {
+          passwordResetOtp: otpHash,
+          passwordResetOtpExpiry: new Date(now.getTime() + OTP_EXPIRY_MS),
+          passwordResetAttempts: 0,
+          passwordResetTokenHash: null,
+          passwordResetTokenExpiry: null,
+        },
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(200).json(genericResponse);
+    }
 
     try {
       await transporter.sendMail({
@@ -540,61 +719,142 @@ const requestPasswordResetOtp = async (req, res) => {
         html: `<div style="font-family:Arial,sans-serif"><h2>Password reset</h2><p>Your QodeMeet reset code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:5px">${otp}</p><p>This code expires in 10 minutes. If you did not request this, ignore this email.</p></div>`,
       });
     } catch (mailError) {
-      user.passwordResetOtp = null;
-      user.passwordResetOtpExpiry = null;
-      await user.save();
+      // Only clear the OTP created by this request.
+      await userModel.updateOne(
+        { _id: user._id, passwordResetOtp: otpHash },
+        {
+          $set: {
+            passwordResetOtp: null,
+            passwordResetOtpExpiry: null,
+            passwordResetAttempts: 0,
+          },
+        }
+      );
+
       console.error("Password reset email failed:", mailError.message);
-      return res.status(503).json({ success: false, message: "Unable to send reset code. Please try again." });
+
+      return res.status(503).json({
+        success: false,
+        message: "Unable to send reset code. Please try again.",
+      });
     }
 
     return res.status(200).json(genericResponse);
   } catch (error) {
     console.error("Request password reset error:", error);
-    return res.status(500).json({ success: false, message: "Unable to process password reset" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to process password reset",
+    });
   }
 };
 
 const verifyPasswordResetOtp = async (req, res) => {
   try {
-    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const email = typeof req.body?.email === "string"
+      ? req.body.email.trim().toLowerCase()
+      : "";
     const otp = req.body?.otp;
 
-    if (!validator.isEmail(email) || typeof otp !== "string" || !/^\\d{6}$/.test(otp)) {
-      return res.status(400).json({ success: false, message: "Enter a valid email and six-digit code" });
+    if (
+      !validator.isEmail(email) ||
+      typeof otp !== "string" ||
+      !/^\d{6}$/.test(otp)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid email and six-digit code",
+      });
     }
 
     const user = await userModel.findOne({ email }).select(
       "+passwordResetOtp +passwordResetOtpExpiry +passwordResetAttempts"
     );
 
+    const now = new Date();
+
     if (
       !user ||
       !user.passwordResetOtp ||
       !user.passwordResetOtpExpiry ||
-      user.passwordResetOtpExpiry.getTime() < Date.now() ||
+      user.passwordResetOtpExpiry <= now ||
       user.passwordResetAttempts >= 5
     ) {
-      return res.status(400).json({ success: false, message: "Invalid or expired reset code" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset code",
+      });
     }
 
-    const validOtp = await bcrypt.compare(otp, user.passwordResetOtp);
+    const otpHash = user.passwordResetOtp;
+    const validOtp = await bcrypt.compare(otp, otpHash);
+
+    const activeOtpFilter = {
+      _id: user._id,
+      passwordResetOtp: otpHash,
+      passwordResetOtpExpiry: { $gt: now },
+      $or: [
+        { passwordResetAttempts: { $lt: 5 } },
+        { passwordResetAttempts: { $exists: false } },
+      ],
+    };
+
     if (!validOtp) {
-      user.passwordResetAttempts += 1;
-      if (user.passwordResetAttempts >= 5) {
-        user.passwordResetOtp = null;
-        user.passwordResetOtpExpiry = null;
+      const attemptResult = await userModel.updateOne(
+        activeOtpFilter,
+        { $inc: { passwordResetAttempts: 1 } }
+      );
+
+      if (attemptResult.modifiedCount === 1) {
+        await userModel.updateOne(
+          {
+            _id: user._id,
+            passwordResetOtp: otpHash,
+            passwordResetAttempts: { $gte: 5 },
+          },
+          {
+            $set: {
+              passwordResetOtp: null,
+              passwordResetOtpExpiry: null,
+            },
+          }
+        );
       }
-      await user.save();
-      return res.status(400).json({ success: false, message: "Invalid or expired reset code" });
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset code",
+      });
     }
 
     const resetToken = crypto.randomBytes(32).toString("hex");
-    user.passwordResetOtp = null;
-    user.passwordResetOtpExpiry = null;
-    user.passwordResetAttempts = 0;
-    user.passwordResetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
-    user.passwordResetTokenExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
+    const resetTokenHash = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    // Consume the OTP and create the reset token atomically.
+    const updatedUser = await userModel.findOneAndUpdate(
+      activeOtpFilter,
+      {
+        $set: {
+          passwordResetOtp: null,
+          passwordResetOtpExpiry: null,
+          passwordResetAttempts: 0,
+          passwordResetTokenHash: resetTokenHash,
+          passwordResetTokenExpiry: new Date(now.getTime() + 10 * 60 * 1000),
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset code",
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -603,7 +863,11 @@ const verifyPasswordResetOtp = async (req, res) => {
     });
   } catch (error) {
     console.error("Verify password reset OTP error:", error);
-    return res.status(500).json({ success: false, message: "Unable to verify reset code" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to verify reset code",
+    });
   }
 };
 
@@ -620,11 +884,21 @@ const resetPassword = async (req, res) => {
       newPassword.length < 8 ||
       Buffer.byteLength(newPassword, "utf8") > 72
     ) {
-      return res.status(400).json({ success: false, message: "Invalid reset details or password (minimum 8 characters)" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reset details or password (minimum 8 characters)",
+      });
     }
 
-    const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
     const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    // The reset token is consumed atomically. Concurrent reuse cannot
+    // successfully update the same account twice.
     const user = await userModel.findOneAndUpdate(
       {
         email: email.trim().toLowerCase(),
@@ -639,6 +913,7 @@ const resetPassword = async (req, res) => {
           passwordResetOtp: null,
           passwordResetOtpExpiry: null,
           passwordResetAttempts: 0,
+          otpAttempts: 0,
         },
         $inc: { tokenVersion: 1 },
       },
@@ -646,7 +921,10 @@ const resetPassword = async (req, res) => {
     );
 
     if (!user) {
-      return res.status(400).json({ success: false, message: "Reset session is invalid or expired. Request a new code." });
+      return res.status(400).json({
+        success: false,
+        message: "Reset session is invalid or expired. Request a new code.",
+      });
     }
 
     const io = req.app.get("io");
@@ -655,10 +933,17 @@ const resetPassword = async (req, res) => {
     const { maxAge, ...clearOptions } = cookieOptions;
     res.clearCookie("qodemeet_token", clearOptions);
 
-    return res.status(200).json({ success: true, message: "Password reset successfully. Please login again." });
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully. Please login again.",
+    });
   } catch (error) {
     console.error("Reset password error:", error);
-    return res.status(500).json({ success: false, message: "Unable to reset password" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to reset password",
+    });
   }
 };
 
@@ -765,53 +1050,43 @@ const updateuser = async (req, res) => {
       if (skills !== undefined) {
         const parsed = parseField(skills, []);
 
-        if (!Array.isArray(parsed) || parsed.length > 50) {
+        if (
+          !Array.isArray(parsed) ||
+          parsed.length > 50 ||
+          parsed.some(
+            (skill) =>
+              typeof skill !== "string" ||
+              !skill.trim() ||
+              skill.trim().length > 50
+          )
+        ) {
           throw new Error("Invalid skills");
         }
 
-        updateData.skills = parsed;
+        updateData.skills = [
+          ...new Set(parsed.map((skill) => skill.trim())),
+        ];
       }
 
       if (socialLinks !== undefined) {
-        const parsed = parseField(socialLinks, {});
-
-        if (
-          !parsed ||
-          typeof parsed !== "object" ||
-          Array.isArray(parsed)
-        ) {
-          throw new Error("Invalid social links");
-        }
-
-        updateData.socialLinks = parsed;
+        updateData.socialLinks = parseProfileObject(
+          socialLinks,
+          ["linkedin", "github", "portfolio"]
+        );
       }
 
       if (education !== undefined) {
-        const parsed = parseField(education, {});
-
-        if (
-          !parsed ||
-          typeof parsed !== "object" ||
-          Array.isArray(parsed)
-        ) {
-          throw new Error("Invalid education");
-        }
-
-        updateData.education = parsed;
+        updateData.education = parseProfileObject(
+          education,
+          ["college", "degree", "graduationYear"]
+        );
       }
 
       if (experience !== undefined) {
-        const parsed = parseField(experience, {});
-
-        if (
-          !parsed ||
-          typeof parsed !== "object" ||
-          Array.isArray(parsed)
-        ) {
-          throw new Error("Invalid experience");
-        }
-
-        updateData.experience = parsed;
+        updateData.experience = parseProfileObject(
+          experience,
+          ["company", "designation", "duration"]
+        );
       }
     } catch (parseError) {
       return res.status(400).json({
@@ -820,17 +1095,24 @@ const updateuser = async (req, res) => {
       });
     }
 
-    // Avatar upload.
+    // Avatar upload: validate MIME type and file signature.
     if (req.files?.avatar?.[0]) {
       const file = req.files.avatar[0];
+      const allowedImageTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+      ];
 
       if (
-        !file.mimetype?.startsWith("image/") ||
-        file.size > 5 * 1024 * 1024
+        !allowedImageTypes.includes(file.mimetype) ||
+        file.size > 5 * 1024 * 1024 ||
+        !isValidImageBuffer(file.buffer)
       ) {
         return res.status(400).json({
           success: false,
-          message: "Avatar must be an image smaller than 5MB",
+          message: "Avatar must be a valid JPEG, PNG, WEBP or GIF image under 5MB",
         });
       }
 
@@ -843,18 +1125,18 @@ const updateuser = async (req, res) => {
       updateData.avatar = avatarUpload.url;
     }
 
-    // Resume upload.
+    // Resume upload: validate MIME type and PDF signature.
     if (req.files?.resume?.[0]) {
       const file = req.files.resume[0];
 
-      const isPdf =
-        file.mimetype === "application/pdf" ||
-        file.originalname?.toLowerCase().endsWith(".pdf");
-
-      if (!isPdf || file.size > 5 * 1024 * 1024) {
+      if (
+        file.mimetype !== "application/pdf" ||
+        file.size > 5 * 1024 * 1024 ||
+        !isValidPdfBuffer(file.buffer)
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Resume must be a PDF smaller than 5MB",
+          message: "Resume must be a valid PDF smaller than 5MB",
         });
       }
 
@@ -935,7 +1217,7 @@ const getUserbyemail = async (req, res) => {
         email: email.toLowerCase().trim(),
         role: "candidate",
       })
-      .select("_id name email role isVerified avatar");
+      .select("_id email isVerified");
 
     if (!user) {
       return res.status(404).json({
@@ -964,7 +1246,7 @@ const getUserbyemail = async (req, res) => {
 
 const getSubscription = async (req, res) => {
   try {
-    const user = await userModel.findById(req.user._id).select("+otp +otpExpiry");
+    const user = await userModel.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({

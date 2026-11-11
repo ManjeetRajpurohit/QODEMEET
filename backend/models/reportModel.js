@@ -23,6 +23,7 @@ const reportSchema = new mongoose.Schema(
     title: {
       type: String,
       required: true,
+      trim: true,
     },
 
     interviewDate: {
@@ -33,26 +34,35 @@ const reportSchema = new mongoose.Schema(
     overallScore: {
       type: Number,
       default: 0,
+      min: 0,
+      max: 100,
     },
 
     communication: {
       type: Number,
       default: 0,
+      min: 0,
+      max: 100,
     },
 
     problemSolving: {
       type: Number,
       default: 0,
+      min: 0,
+      max: 100,
     },
 
     technicalSkills: [
       {
         name: {
           type: String,
+          trim: true,
         },
         score: {
           type: Number,
           default: 0,
+          min: 0,
+          max: 100,
         },
       },
     ],
@@ -82,6 +92,13 @@ const reportSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// One interview can have only one report.
+reportSchema.index(
+  { interview: 1 },
+  { unique: true }
+);
+
 const reportModel = mongoose.model("Report", reportSchema);
 
 export default reportModel;

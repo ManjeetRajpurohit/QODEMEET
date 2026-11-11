@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 import interviewModel from "../models/interviewModel.js";
@@ -11,6 +10,17 @@ import {
 } from "../utils/sendInterviewMail.js";
 
 import userModel from "../models/userModel.js";
+
+// Never expose interviewer-only notes to candidates.
+const serializeInterviewForUser = (interview, includeInternalNotes) => {
+  const interviewData = interview.toObject();
+
+  if (!includeInternalNotes) {
+    delete interviewData.internalNotes;
+  }
+
+  return interviewData;
+};
 
 // ==========================================
 // SCHEDULE INTERVIEW
@@ -29,7 +39,6 @@ const schedule = async (req, res) => {
       internalNotes,
     } = req.body;
 
-    // Only the authenticated interviewer can schedule.
     const interviewer = req.user._id;
 
     if (req.user.role !== "interviewer") {
@@ -246,9 +255,15 @@ const getMyInterviews = async (req, res) => {
       .populate("interviewer", "name email avatar")
       .sort({ createdAt: -1 });
 
+    const includeInternalNotes = req.user.role === "interviewer";
+
+    const safeInterviews = interviews.map((interview) =>
+      serializeInterviewForUser(interview, includeInternalNotes)
+    );
+
     return res.status(200).json({
       success: true,
-      interviews,
+      interviews: safeInterviews,
     });
   } catch (error) {
     console.error("Get my interviews error:", error);
@@ -259,7 +274,6 @@ const getMyInterviews = async (req, res) => {
     });
   }
 };
-
 // ==========================================
 // GET COMPLETED INTERVIEWS
 // ==========================================
@@ -287,9 +301,15 @@ const getCompletedInterviews = async (req, res) => {
       .populate("interviewer", "name email")
       .sort({ createdAt: -1 });
 
+    const includeInternalNotes = req.user.role === "interviewer";
+
+    const safeInterviews = interviews.map((interview) =>
+      serializeInterviewForUser(interview, includeInternalNotes)
+    );
+
     return res.status(200).json({
       success: true,
-      interviews,
+      interviews: safeInterviews,
     });
   } catch (error) {
     console.error("Get completed interviews error:", error);
@@ -415,9 +435,14 @@ const getSingleInterview = async (req, res) => {
       });
     }
 
+    const safeInterview = serializeInterviewForUser(
+      interview,
+      isInterviewer
+    );
+
     return res.status(200).json({
       success: true,
-      interview,
+      interview: safeInterview,
     });
   } catch (error) {
     console.error("Get single interview error:", error);
@@ -427,9 +452,7 @@ const getSingleInterview = async (req, res) => {
       message: "Unable to retrieve interview",
     });
   }
-};
-
-// ==========================================
+};// ==========================================
 // END INTERVIEW
 // ==========================================
 
@@ -587,4 +610,3 @@ export {
   endInterview,
   startInterview,
 };
-

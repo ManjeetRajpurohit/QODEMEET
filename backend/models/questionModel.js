@@ -40,6 +40,14 @@ const questionSchema = new mongoose.Schema(
         output: String,
       },
     ],
+
+    // Interviewer who created this question.
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+      index: true,
+    },
   },
   {
     timestamps: true,

@@ -55,6 +55,7 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    // Account verification OTP
     otp: {
       type: String,
       default: null,
@@ -67,6 +68,14 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // Failed account verification OTP attempts
+    otpAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+      select: false,
+    },
+
     // Only two supported roles.
     // Role selection is permitted only once.
     role: {
@@ -75,12 +84,14 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Incremented to invalidate existing JWT sessions.
     tokenVersion: {
       type: Number,
       default: 0,
       min: 0,
     },
 
+    // Password reset OTP
     passwordResetOtp: {
       type: String,
       default: null,
@@ -93,6 +104,7 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // Failed password reset OTP attempts
     passwordResetAttempts: {
       type: Number,
       default: 0,
@@ -100,6 +112,7 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // Hashed, single-use password reset token
     passwordResetTokenHash: {
       type: String,
       default: null,
@@ -196,11 +209,7 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
-  tokenVersion: {
-  type: Number,
-  default: 0,
-},
+  }
 );
 
 const userModel = mongoose.model("User", userSchema);

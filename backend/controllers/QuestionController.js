@@ -1,10 +1,19 @@
-
 import mongoose from "mongoose";
 import QuestionModel from "../models/questionModel.js";
 
+// ==========================================
 // ADD QUESTION
+// ==========================================
+
 const AddQuestion = async (req, res) => {
   try {
+    if (req.user?.role !== "interviewer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only interviewers can add questions",
+      });
+    }
+
     const {
       title,
       category,
@@ -72,6 +81,9 @@ const AddQuestion = async (req, res) => {
       examples,
       constraints,
       visibleTestCases,
+
+      // The authenticated interviewer becomes the owner.
+      createdBy: req.user._id,
     });
 
     return res.status(201).json({
@@ -88,9 +100,19 @@ const AddQuestion = async (req, res) => {
   }
 };
 
+// ==========================================
 // DELETE QUESTION
+// ==========================================
+
 const DeleteQuestion = async (req, res) => {
   try {
+    if (req.user?.role !== "interviewer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only interviewers can delete questions",
+      });
+    }
+
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -100,12 +122,16 @@ const DeleteQuestion = async (req, res) => {
       });
     }
 
-    const question = await QuestionModel.findByIdAndDelete(id);
+    // Delete only when the authenticated interviewer owns it.
+    const question = await QuestionModel.findOneAndDelete({
+      _id: id,
+      createdBy: req.user._id,
+    });
 
     if (!question) {
       return res.status(404).json({
         success: false,
-        message: "Question doesn't exist",
+        message: "Question not found or you do not own this question",
       });
     }
 
@@ -123,10 +149,14 @@ const DeleteQuestion = async (req, res) => {
   }
 };
 
+// ==========================================
 // GET ALL QUESTIONS
+// ==========================================
+
 const ALLquestions = async (req, res) => {
   try {
     const questions = await QuestionModel.find({})
+      .select("-createdBy")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -144,7 +174,10 @@ const ALLquestions = async (req, res) => {
   }
 };
 
+// ==========================================
 // GET SINGLE QUESTION
+// ==========================================
+
 const singleQuestion = async (req, res) => {
   try {
     const { id } = req.params;
@@ -156,7 +189,9 @@ const singleQuestion = async (req, res) => {
       });
     }
 
-    const question = await QuestionModel.findById(id).lean();
+    const question = await QuestionModel.findById(id)
+      .select("-createdBy")
+      .lean();
 
     if (!question) {
       return res.status(404).json({

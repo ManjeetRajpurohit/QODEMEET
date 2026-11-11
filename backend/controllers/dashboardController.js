@@ -52,9 +52,14 @@ const getCandidateDashboard = async (req, res) => {
           candidate: userId,
           status: "scheduled",
         })
+        // Explicitly return only fields required by the dashboard.
+        .select(
+          "_id title date time expectedDuration status interviewer"
+        )
         .populate("interviewer", "name")
         .sort({ date: 1 })
-        .limit(10),
+        .limit(10)
+        .lean(),
     ]);
 
     return res.status(200).json({
@@ -135,9 +140,14 @@ const getInterviewerDashboard = async (req, res) => {
           interviewer: userId,
           status: "scheduled",
         })
+        // No internal notes or unrelated interview data in dashboard.
+        .select(
+          "_id title date time expectedDuration status candidate"
+        )
         .populate("candidate", "name")
         .sort({ date: 1 })
-        .limit(10),
+        .limit(10)
+        .lean(),
     ]);
 
     const reportInterviewIds = new Set(

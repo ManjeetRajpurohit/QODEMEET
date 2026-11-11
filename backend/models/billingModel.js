@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const billingSchema = new mongoose.Schema(
@@ -22,9 +23,11 @@ const billingSchema = new mongoose.Schema(
       sparse: true,
     },
 
-    // Razorpay Signature
+    // Keep the payment signature in MongoDB,
+    // but exclude it from normal query results.
     signature: {
       type: String,
+      select: false,
     },
 
     amount: {
@@ -63,7 +66,7 @@ const billingSchema = new mongoose.Schema(
       type: Date,
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 const billingModel = mongoose.model("billing", billingSchema);
